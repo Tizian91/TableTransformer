@@ -69,6 +69,6 @@ Wenn Sie Dateien ändern, erhöhen Sie in `sw.js` die Konstante `VERSION`, damit
 
 ## Lizenz
 
-Copyright (C) 2026 &lt;Tizian Arold&gt;
+Copyright (C) 2026 Tizian Arold
 
 Dieses Programm ist freie Software: Sie können es unter den Bedingungen der [GNU General Public License](LICENSE), Version 3 oder (nach Ihrer Wahl) jeder späteren Version, weitergeben und/oder verändern. Es wird ohne jede Gewährleistung bereitgestellt.
