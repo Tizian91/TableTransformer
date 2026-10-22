@@ -1,0 +1,1515 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TableTransformer</title>
+<!--
+  TableTransformer – Copyright (C) 2026 <IHR NAME>
+  SPDX-License-Identifier: GPL-3.0-or-later
+  This program is free software: you can redistribute it and/or modify it under the terms of the
+  GNU General Public License as published by the Free Software Foundation, either version 3 of the
+  License, or (at your option) any later version. See LICENSE or <https://www.gnu.org/licenses/>.
+-->
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#ffffff">
+<style>
+:root{--bg:#f3f4f7;--panel:#ffffff;--text:#1d2330;--muted:#687083;--border:#d9dde5;--accent:#2f6fde;--accent-soft:#e7efff}
+@media (prefers-color-scheme: dark){:root{--bg:#15171c;--panel:#1f232a;--text:#e6e8ec;--muted:#9aa3b2;--border:#353b46;--accent:#6c9cff;--accent-soft:#25324d}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font:13px/1.4 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap}
+header h1{font-size:15px;margin:0 12px 0 0}
+header .sp{flex:1}
+main{flex:1;display:flex;min-height:0}
+aside{width:360px;min-width:260px;max-width:75vw;flex:none;overflow:auto;background:var(--panel);padding:4px 12px 30px}
+#splitter{flex:none;width:6px;cursor:col-resize;background:var(--border);touch-action:none;transition:background .15s}
+#splitter:hover,#splitter.active{background:var(--accent)}
+body.resizing{cursor:col-resize;user-select:none}
+details{border-bottom:1px solid var(--border);padding:4px 0 8px}
+summary{font-weight:600;cursor:pointer;padding:6px 0;user-select:none}
+.row{display:flex;align-items:center;gap:6px;margin:5px 0}
+.row>label:first-child,.row>span:first-child{flex:1}
+.hint{color:var(--muted);font-size:12px;margin:4px 0}
+input,select,textarea,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:3px 6px}
+input[type=number]{width:72px}
+input[type=color]{width:38px;height:26px;padding:1px 2px}
+input[type=checkbox]{accent-color:var(--accent)}
+textarea{width:100%;font-family:Consolas,"Courier New",monospace;font-size:12px;resize:vertical}
+#md{height:170px}
+textarea.small{height:46px;font-family:inherit;font-size:13px}
+button{cursor:pointer;background:var(--panel)}
+button:hover{border-color:var(--accent)}
+button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:5px;margin:5px 0}
+.chk{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;margin:6px 0}
+.chk label{display:flex;gap:5px;align-items:center;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#cols{display:grid;grid-template-columns:auto 1fr 64px 92px;gap:4px 6px;align-items:center;margin:6px 0}
+#cols .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+#cols input{width:64px}
+#stage{flex:1;display:flex;flex-direction:column;min-width:0}
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--border)}
+.toolbar .sep{width:1px;height:22px;background:var(--border);margin:0 4px}
+#view{flex:1;overflow:auto;display:flex;padding:30px}
+#wrap{margin:auto;line-height:0;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+#wrap.checker{background:repeating-conic-gradient(#cfcfcf 0 25%,#fff 0 50%) 0 0/16px 16px}
+canvas{display:block;touch-action:none}
+#status{padding:4px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);background:var(--panel)}
+#toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:6px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:10}
+#toast.show{opacity:.95}
+@media (max-width:820px){main{flex-direction:column}aside{width:auto!important;max-width:none;max-height:45vh;border-bottom:1px solid var(--border)}#splitter{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>TableTransformer</h1>
+  <span class="hint">Markdown-Tabelle einfügen → gestalten → als Bild oder Word-Tabelle exportieren</span>
+  <span class="sp"></span>
+  <button id="hWord" class="primary" title="Als echte Tabelle in Word einfügen (Strg+V)">Für Word kopieren</button>
+  <button id="hCopy">Bild kopieren</button>
+  <button id="hPng">PNG speichern</button>
+</header>
+<main>
+<aside>
+  <details open>
+    <summary>Markdown</summary>
+    <textarea id="md" spellcheck="false" placeholder="| A | B |&#10;|---|:-:|&#10;| 1 | 2 |"></textarea>
+    <div class="row">
+      <input type="file" id="file" accept=".md,.markdown,.txt,.csv,.tsv" hidden>
+      <button id="btnOpen">Datei öffnen…</button>
+      <select id="tblSel" hidden></select>
+      <span style="flex:1"></span>
+    </div>
+    <div class="row"><label><input type="checkbox" data-k="useHeader"> Erste Zeile ist Kopfzeile</label></div>
+    <p class="hint">Unterstützt **fett**, *kursiv*, `code`, &lt;br&gt; und Ausrichtung per :---:. Auch aus Excel kopierte Zellen (Tabulator-getrennt) funktionieren. Der Stil bleibt erhalten, wenn du eine neue Tabelle einfügst.</p>
+  </details>
+
+  <details open>
+    <summary>Daten</summary>
+    <div class="row"><span>Sortieren nach</span><select id="sortCol" style="max-width:130px"></select>
+      <select id="sortDir"><option value="1">aufsteigend</option><option value="-1">absteigend</option></select></div>
+    <div class="row"><span>Zahlen runden</span>
+      <select id="decimals"><option value="-1">unverändert</option><option value="0">0 Stellen</option><option value="1">1 Stelle</option><option value="2">2 Stellen</option><option value="3">3 Stellen</option><option value="4">4 Stellen</option></select></div>
+    <div class="row"><label><input type="checkbox" id="transpose"> Zeilen und Spalten tauschen</label></div>
+    <div class="hint">Sichtbare Spalten:</div>
+    <div id="visCols" class="chk"></div>
+    <p class="hint">Der Markdown-Text wird dabei nicht verändert. Die geänderte Tabelle bekommst du unter „Word &amp; Markdown“.</p>
+  </details>
+
+  <details open>
+    <summary>Vorlagen</summary>
+    <div class="btns" id="presetBtns"></div>
+    <div class="row"><input id="presetName" placeholder="Name für eigene Vorlage" style="flex:1"><button id="btnSavePreset">Speichern</button></div>
+    <div class="row"><select id="userPresets" style="flex:1"></select><button id="btnLoadPreset">Laden</button><button id="btnDelPreset" title="Vorlage löschen">✕</button></div>
+    <div id="folderBox">
+      <div class="hint" style="margin-top:10px;font-weight:600">Stil-Ordner</div>
+      <div class="row"><span id="dirName" class="hint" style="flex:1">kein Ordner gewählt</span><button id="btnDirGrant" hidden>Freigeben</button><button id="btnDirPick">Ordner wählen…</button></div>
+      <div class="row"><select id="dirStyles" style="flex:1"></select><button id="btnDirLoad">Laden</button><button id="btnDirRefresh" title="Liste aktualisieren">⟳</button></div>
+      <div class="row"><button id="btnDirSave">Im Ordner speichern</button><span class="hint">verwendet den Namen aus dem Feld oben</span></div>
+      <p class="hint">Ist ein Ordner verbunden, legt „Stil exportieren“ automatisch eine Kopie darin ab. Liegt der Ordner auf einem Netzlaufwerk oder in OneDrive, nutzen alle dieselben Stile.</p>
+    </div>
+    <p id="folderNo" class="hint" hidden>Der Stil-Ordner funktioniert nur in Edge und Chrome. Hier bitte „Stil exportieren“ und „Stil importieren“ verwenden.</p>
+    <div class="btns">
+      <button id="btnExportStyle">Stil exportieren (.json)</button>
+      <button id="btnImportStyle">Stil importieren</button>
+      <input type="file" id="styleFile" accept=".json" hidden>
+      <button id="btnReset">Alles zurücksetzen</button>
+    </div>
+  </details>
+
+  <details open>
+    <summary>Schrift</summary>
+    <div class="row"><span>Schriftart</span>
+      <select data-k="font">
+        <option>Calibri</option><option>Aptos</option><option>Arial</option><option>Helvetica</option><option>Segoe UI</option>
+        <option>Verdana</option><option>Tahoma</option><option>Century Gothic</option><option>Cambria</option>
+        <option>Times New Roman</option><option>Georgia</option><option>Garamond</option><option>Palatino Linotype</option>
+        <option>Book Antiqua</option><option>CMU Serif</option><option>Latin Modern Roman</option><option>Consolas</option><option>Courier New</option>
+      </select></div>
+    <div class="row"><span>Eigene Schrift</span><input data-k="fontCustom" placeholder="z. B. Source Sans Pro" style="width:160px"></div>
+    <div class="row"><span>Schriftgröße (pt)</span><input type="number" step="0.5" min="4" data-k="fontSize"></div>
+    <div class="row"><span>Kopfzeile (pt)</span><input type="number" step="0.5" min="4" data-k="headerFontSize"></div>
+    <div class="row"><span>Zeilenabstand</span><input type="number" step="0.05" min="0.8" data-k="lineHeight"></div>
+    <div class="row"><label><input type="checkbox" data-k="headerBold"> Kopfzeile fett</label><label><input type="checkbox" data-k="firstColBold"> 1. Spalte fett</label></div>
+    <div class="row"><span>Textfarbe</span><input type="color" data-k="textColor"></div>
+    <div class="row"><span>Textfarbe Kopfzeile</span><input type="color" data-k="headerColor"></div>
+  </details>
+
+  <details open>
+    <summary>Beschriftung &amp; Fußnote</summary>
+    <textarea class="small" data-k="capText" placeholder="**Tabelle 1:** Werkstoffkennwerte"></textarea>
+    <div class="row"><span>Position</span><select data-k="capPos"><option value="top">über der Tabelle</option><option value="bottom">unter der Tabelle</option></select></div>
+    <div class="row"><span>Größe (pt)</span><input type="number" step="0.5" min="4" data-k="capSize"></div>
+    <div class="row"><label><input type="checkbox" data-k="capBold"> fett</label><label><input type="checkbox" data-k="capItalic"> kursiv</label>
+      <select data-k="capAlign"><option value="left">links</option><option value="center">zentriert</option><option value="right">rechts</option></select></div>
+    <div class="row"><span>Abstand zur Tabelle (px)</span><input type="number" min="0" data-k="capGap"></div>
+    <textarea class="small" data-k="noteText" placeholder="Fußnote / Quelle, z. B. Quelle: eigene Messungen" style="margin-top:8px"></textarea>
+    <div class="row"><span>Größe (pt)</span><input type="number" step="0.5" min="4" data-k="noteSize"></div>
+    <div class="row"><label><input type="checkbox" data-k="noteItalic"> kursiv</label>
+      <select data-k="noteAlign"><option value="left">links</option><option value="center">zentriert</option><option value="right">rechts</option></select></div>
+    <div class="row"><span>Abstand zur Tabelle (px)</span><input type="number" min="0" data-k="noteGap"></div>
+  </details>
+
+  <details open>
+    <summary>Ausrichtung</summary>
+    <div class="row"><span>Alle Spalten</span>
+      <div class="btns" style="margin:0">
+        <button data-align="left">Links</button><button data-align="center">Zentriert</button><button data-align="right">Rechts</button><button data-align="md" title="Ausrichtung aus dem Markdown übernehmen">MD</button>
+      </div></div>
+    <div class="row"><span>Kopfzeile</span>
+      <select data-k="headerAlign"><option value="col">wie Spalte</option><option value="left">links</option><option value="center">zentriert</option><option value="right">rechts</option></select></div>
+    <div class="row"><span>Vertikal</span>
+      <select data-k="vAlign"><option value="top">oben</option><option value="middle">mittig</option><option value="bottom">unten</option></select></div>
+  </details>
+
+  <details open>
+    <summary>Spalten &amp; Zeilen</summary>
+    <p class="hint">Breiten leer = automatisch. Im Modus „Größe“ kannst du Spalten- und Zeilengrenzen direkt in der Vorschau ziehen (Doppelklick = automatisch).</p>
+    <div id="cols"></div>
+    <div class="btns"><button id="btnResetW">Breiten zurücksetzen</button><button id="btnResetH">Höhen zurücksetzen</button><button id="btnEqualW">Gleich breit</button></div>
+    <div class="row"><label><input type="checkbox" data-k="wrap"> Text umbrechen</label></div>
+    <div class="row"><span>Innenabstand horizontal (px)</span><input type="number" min="0" data-k="padX"></div>
+    <div class="row"><span>Innenabstand vertikal (px)</span><input type="number" min="0" data-k="padY"></div>
+    <div class="row"><span>Mindest-Zeilenhöhe (px)</span><input type="number" min="0" data-k="minRowH"></div>
+  </details>
+
+  <details open>
+    <summary>Tabellen- &amp; Bildbreite</summary>
+    <div class="row"><span>Tabellenbreite</span>
+      <select data-k="widthMode"><option value="auto">automatisch</option><option value="fixed">fest</option></select></div>
+    <div class="row"><span>Breite</span><input type="number" step="1" min="1" data-k="tableWidth">
+      <select data-k="twUnit"><option>px</option><option>mm</option><option>cm</option></select></div>
+    <div class="row"><span>Bildbreite (0 = wie Tabelle)</span><input type="number" step="1" min="0" data-k="imgWidth"></div>
+    <div class="row"><span>Tabelle im Bild / in Word</span>
+      <select data-k="tablePos"><option value="left">links</option><option value="center">zentriert</option><option value="right">rechts</option></select></div>
+    <div class="row"><span>Rand ums Bild (px)</span><input type="number" min="0" data-k="margin"></div>
+    <p class="hint">mm/cm beziehen sich auf die Größe im Dokument, wenn das Bild in Originalgröße eingefügt wird (PNG und SVG enthalten die passende Größenangabe).</p>
+  </details>
+
+  <details open>
+    <summary>Linien</summary>
+    <div class="btns">
+      <button data-lines="all">Gitter</button><button data-lines="none">Keine</button><button data-lines="h">Nur horizontal</button><button data-lines="book">Booktabs</button><button data-lines="outer">Nur Rahmen</button>
+    </div>
+    <div class="chk">
+      <label><input type="checkbox" data-k="hTop"> Oben</label>
+      <label><input type="checkbox" data-k="vOuter"> Rahmen links/rechts</label>
+      <label><input type="checkbox" data-k="hHeader"> Unter Kopfzeile</label>
+      <label><input type="checkbox" data-k="vInner"> Zwischen Spalten</label>
+      <label><input type="checkbox" data-k="hInner"> Zwischen Zeilen</label>
+      <label><input type="checkbox" data-k="hBottom"> Unten</label>
+    </div>
+    <div class="row"><span>Stärke innen (px)</span><input type="number" step="0.25" min="0" data-k="lineW"></div>
+    <div class="row"><span>Stärke außen (px)</span><input type="number" step="0.25" min="0" data-k="outerW"></div>
+    <div class="row"><span>Stärke Kopfzeile (px)</span><input type="number" step="0.25" min="0" data-k="headerLineW"></div>
+    <div class="row"><span>Linienfarbe</span><input type="color" data-k="lineColor"></div>
+    <p class="hint">Einzelne Linien schaltest du mit dem Werkzeug „⊞ Linien an/aus“ per Klick (oder durch Ziehen über mehrere Linien) ein und aus. Diese Linien gehen auch in die Word-Tabelle mit.</p>
+    <div class="btns"><button id="btnResetEdges">Einzelne Linien zurücksetzen</button></div>
+  </details>
+
+  <details open>
+    <summary>Farben</summary>
+    <div class="row"><label><input type="checkbox" data-k="headerBgOn"> Kopfzeile hinterlegen</label><input type="color" data-k="headerBg"></div>
+    <div class="row"><label><input type="checkbox" data-k="bodyBgOn"> Zellen hinterlegen</label><input type="color" data-k="bodyBg"></div>
+    <div class="row"><label><input type="checkbox" data-k="zebra"> Zebrastreifen</label><input type="color" data-k="zebraBg"></div>
+    <div class="row"><label><input type="checkbox" data-k="transparent"> Transparenter Hintergrund</label><input type="color" data-k="canvasBg" title="Bildhintergrund"></div>
+  </details>
+
+  <details open>
+    <summary>Word &amp; Markdown</summary>
+    <div class="btns"><button id="btnWord" class="primary">Für Word kopieren</button><button id="btnDoc">Word-Datei (.doc) speichern</button></div>
+    <div class="row"><label><input type="checkbox" data-k="wordCaption"> Beschriftung und Fußnote mitnehmen</label></div>
+    <p class="hint">„Für Word kopieren“, dann in Word Strg+V drücken: Du bekommst eine echte, bearbeitbare Tabelle mit Schrift, Breiten, Linien und Farben. Freihand-Zeichnungen gehen nur ins Bild mit. Beim Öffnen der .doc-Datei warnt Word eventuell wegen des Formats; einfach mit „Ja“ bestätigen.</p>
+    <div class="btns"><button id="btnMdCopy">Markdown kopieren</button><button id="btnMdSave">Markdown speichern (.md)</button><button id="btnMdApply" title="Ersetzt den Text im Markdown-Feld">Ins Eingabefeld übernehmen</button></div>
+    <p class="hint">Gibt die Tabelle sauber ausgerichtet als Markdown aus, inklusive Sortierung, Rundung, Spaltenauswahl und Ausrichtung.</p>
+  </details>
+
+  <details open>
+    <summary>LaTeX</summary>
+    <div class="row"><span>Ausgabe</span>
+      <select data-k="texEnv"><option value="table">table mit Caption</option><option value="tabular">nur tabular</option></select></div>
+    <div class="row"><span>Schrift</span>
+      <select data-k="texFont"><option value="doc">Dokumentschrift</option><option value="size">Größe übernehmen</option><option value="full">Schrift + Größe (XeLaTeX/LuaLaTeX)</option></select></div>
+    <div class="row"><label><input type="checkbox" data-k="texBooktabs"> booktabs-Linien</label><label><input type="checkbox" data-k="texColors"> Farben</label></div>
+    <div class="row"><span>Label</span><input data-k="texLabel" placeholder="tab:tabelle" style="width:160px"></div>
+    <div class="btns"><button id="btnTexCopy" class="primary">LaTeX kopieren</button><button id="btnTexSave">.tex speichern</button></div>
+    <details id="texPrevBox" style="border:0;padding:0">
+      <summary style="font-weight:400">Code-Vorschau</summary>
+      <textarea id="texPrev" readonly spellcheck="false" style="height:240px;white-space:pre"></textarea>
+    </details>
+    <p class="hint">Die benötigten Pakete stehen als Kommentar oben im Code. booktabs wird nur verwendet, wenn die Tabelle keine senkrechten Linien hat (booktabs und senkrechte Linien vertragen sich nicht). „Tabelle 1:“ am Anfang der Beschriftung wird weggelassen, weil LaTeX selbst nummeriert. Freihand-Zeichnungen werden nicht übernommen.</p>
+  </details>
+
+  <details open>
+    <summary>Bild-Export</summary>
+    <div class="row"><span>Auflösung (PNG)</span>
+      <select data-k="exportScale" data-num="1"><option value="1">1× (96 dpi)</option><option value="2">2× (192 dpi)</option><option value="3">3× (288 dpi)</option><option value="4">4× (384 dpi)</option><option value="6.25">6,25× (600 dpi)</option></select></div>
+    <div class="row"><span>Dateiname</span><input data-k="fileName" style="width:150px"></div>
+    <div class="btns"><button id="btnPng" class="primary">PNG speichern</button><button id="btnCopy">Bild kopieren</button><button id="btnSvg">SVG speichern</button><button id="btnPdf">PDF (Drucken)</button></div>
+    <p class="hint">SVG ist eine Vektorgrafik und bleibt bei jedem Zoom scharf; Word und PowerPoint können sie einfügen. „PDF“ öffnet den Druckdialog mit passender Seitengröße, dort „Als PDF speichern“ wählen.<br>Schriftgröße in pt entspricht der Größe im Dokument, wenn PNG oder SVG in Originalgröße (100 %) eingefügt werden.</p>
+  </details>
+</aside>
+<div id="splitter" title="Ziehen zum Ändern der Breite (Doppelklick = Standard)"></div>
+
+<section id="stage">
+  <div class="toolbar">
+    <button data-mode="select" title="Spalten/Zeilen ziehen">↔ Größe</button>
+    <button data-mode="edge" title="Einzelne Tabellenlinien per Klick ein- und ausschalten">⊞ Linien an/aus</button>
+    <button data-mode="line" title="Gerade Linie zeichnen (Alt = beliebiger Winkel)">／ Linie</button>
+    <button data-mode="brush" title="Freihand zeichnen">✎ Pinsel</button>
+    <button data-mode="erase" title="Striche entfernen">⌫ Radierer</button>
+    <span class="sep"></span>
+    <input type="color" id="penColor" value="#000000" title="Stiftfarbe">
+    <label>Stärke <input type="number" id="penW" value="1.5" step="0.25" min="0.25" style="width:60px"></label>
+    <label><input type="checkbox" id="snap" checked> Am Raster einrasten</label>
+    <button id="btnUndo" title="Strg+Z">↶ Rückgängig</button>
+    <button id="btnClearStrokes">Zeichnungen löschen</button>
+    <span class="sep"></span>
+    <label>Zoom <input type="range" id="zoom" min="25" max="400" value="150" style="width:110px"></label><span id="zoomLbl">150 %</span>
+  </div>
+  <div id="view"><div id="wrap"><canvas id="cv"></canvas></div></div>
+  <div id="status"></div>
+</section>
+</main>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const PT = 96 / 72;
+const STORE = 'mdTableDesigner.v1';
+const MONO = 'Consolas, "Courier New", monospace';
+
+const DEF = {
+  font: 'Calibri', fontCustom: '', fontSize: 11, headerFontSize: 11, lineHeight: 1.25,
+  headerBold: true, firstColBold: false, textColor: '#1a1a1a', headerColor: '#000000',
+  headerAlign: 'col', vAlign: 'middle',
+  wrap: true, padX: 8, padY: 5, minRowH: 0,
+  widthMode: 'auto', tableWidth: 160, twUnit: 'mm', imgWidth: 0, tablePos: 'center', margin: 6,
+  hTop: true, hHeader: true, hInner: true, hBottom: true, vOuter: true, vInner: true,
+  lineW: 1, outerW: 1, headerLineW: 1, lineColor: '#000000',
+  headerBgOn: true, headerBg: '#e8eef7', bodyBgOn: false, bodyBg: '#ffffff', zebra: false, zebraBg: '#f2f4f8',
+  transparent: false, canvasBg: '#ffffff',
+  capText: '', capPos: 'top', capSize: 11, capBold: false, capItalic: false, capAlign: 'left', capGap: 6,
+  noteText: '', noteSize: 9, noteItalic: false, noteAlign: 'left', noteGap: 4,
+  wordCaption: true, exportScale: 3, fileName: 'tabelle', useHeader: true,
+  texEnv: 'table', texFont: 'size', texBooktabs: true, texColors: true, texLabel: ''
+};
+const NON_STYLE = ['fileName', 'useHeader', 'capText', 'noteText', 'texLabel'];
+
+const LINE_SETS = {
+  all:   { hTop: true, hHeader: true, hInner: true, hBottom: true, vOuter: true, vInner: true },
+  none:  { hTop: false, hHeader: false, hInner: false, hBottom: false, vOuter: false, vInner: false },
+  h:     { hTop: true, hHeader: true, hInner: true, hBottom: true, vOuter: false, vInner: false },
+  book:  { hTop: true, hHeader: true, hInner: false, hBottom: true, vOuter: false, vInner: false, outerW: 1.5, headerLineW: 0.75 },
+  outer: { hTop: true, hHeader: false, hInner: false, hBottom: true, vOuter: true, vInner: false }
+};
+
+const PRESETS = {
+  'Gitter': { ...LINE_SETS.all, lineW: 1, outerW: 1, headerLineW: 1, lineColor: '#000000', headerBgOn: true, headerBg: '#e8eef7', headerColor: '#000000', bodyBgOn: false, zebra: false },
+  'Wissenschaftlich': { ...LINE_SETS.book, font: 'Times New Roman', fontCustom: '', lineW: 0.75, lineColor: '#000000', headerBgOn: false, headerColor: '#000000', bodyBgOn: false, zebra: false, headerBold: true },
+  'Word-Raster': { ...LINE_SETS.all, font: 'Calibri', fontCustom: '', fontSize: 11, headerFontSize: 11, lineW: 0.67, outerW: 0.67, headerLineW: 0.67, lineColor: '#000000', headerBgOn: false, headerColor: '#000000', bodyBgOn: false, zebra: false, padX: 7, padY: 2 },
+  'Minimal': { ...LINE_SETS.none, hHeader: true, headerLineW: 1.5, lineColor: '#333333', headerBgOn: false, headerColor: '#000000', bodyBgOn: false, zebra: false },
+  'Nur horizontal': { ...LINE_SETS.h, lineW: 0.5, outerW: 1.25, headerLineW: 1, lineColor: '#555555', headerBgOn: false, headerColor: '#000000', bodyBgOn: false, zebra: false },
+  'Zebra blau': { ...LINE_SETS.none, headerBgOn: true, headerBg: '#2f5597', headerColor: '#ffffff', zebra: true, zebraBg: '#e9eef8', bodyBgOn: true, bodyBg: '#ffffff' }
+};
+
+const SAMPLE = `| Material | Dichte (g/cm³) | E-Modul (GPa) | Bemerkung |
+|:---------|:--------------:|--------------:|-----------|
+| Stahl    | 7,85 | 210 | **Standard** im Maschinenbau |
+| Aluminium| 2,70 | 70  | leicht, *korrosionsbeständig* |
+| Titan    | 4,51 | 116 | teuer |
+| Holz (Fichte) | 0,47 | 11 | anisotrop<br>feuchteabhängig |`;
+
+const PLACEHOLDER = { header: ['(keine Tabelle gefunden)'], aligns: [null], rows: [], n: 1 };
+const freshT = () => ({ cw: {}, ca: {}, rh: [], edges: {} });
+const freshD = () => ({ hidden: [], sortCol: -1, sortDir: 1, transpose: false, decimals: -1 });
+
+let S = { ...DEF };
+let tables = [], tIdx = 0;
+let T = freshT();   // Formatierung der Ansicht (Breiten, Ausrichtung, Zeilenhöhen, Einzel-Linien)
+let D = freshD();   // Datenansicht (Sortieren, Runden, Spalten, Transponieren)
+let V = null;       // aktuelle Ansicht der Tabelle
+let strokes = [], hist = [];
+let L = null, G = null, zoom = 1.5, mode = 'select';
+let drag = null, hover = null, cur = null;
+
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const mctx = document.createElement('canvas').getContext('2d');
+
+/* ---------- Hilfsfunktionen ---------- */
+const toPx = (v, u) => u === 'mm' ? v / 25.4 * 96 : u === 'cm' ? v / 2.54 * 96 : v;
+const fromPx = (v, u) => u === 'mm' ? v * 25.4 / 96 : u === 'cm' ? v * 2.54 / 96 : v;
+const r1 = v => Math.round(v * 10) / 10;
+const f2 = v => +(+v).toFixed(2);
+const ptStr = v => f2(v * 0.75) + 'pt';
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const strip = s => s.replace(/<br\s*\/?>/gi, ' ').replace(/[*_`]/g, '').replace(/\\\|/g, '|');
+const safeName = () => (S.fileName || 'tabelle').replace(/[\\/:*?"<>|]/g, '_');
+
+/* ---------- Markdown parsen ---------- */
+const SEP_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+function splitRow(line) {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+  const out = []; let cell = '', code = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\' && s[i + 1] === '|') { cell += '\\|'; i++; continue; }
+    if (ch === '`') code = !code;
+    if (ch === '|' && !code) { out.push(cell.trim()); cell = ''; continue; }
+    cell += ch;
+  }
+  out.push(cell.trim());
+  return out;
+}
+const alignOf = a => { a = a.trim(); const l = a.startsWith(':'), r = a.endsWith(':'); return l && r ? 'center' : r ? 'right' : l ? 'left' : null; };
+
+function parseAll(text) {
+  const lines = text.split(/\r?\n/);
+  const blocks = []; let blk = [];
+  for (const l of lines) {
+    if (l.includes('|')) blk.push(l);
+    else { if (blk.length) blocks.push(blk); blk = []; }
+  }
+  if (blk.length) blocks.push(blk);
+  const res = [];
+  for (const b of blocks) {
+    const si = b.findIndex(l => SEP_RE.test(l));
+    let header = null, aligns = [], rows;
+    if (si >= 1) {
+      header = splitRow(b[si - 1]);
+      aligns = splitRow(b[si]).map(alignOf);
+      rows = b.slice(si + 1).filter(l => !SEP_RE.test(l)).map(splitRow);
+    } else rows = b.filter(l => !SEP_RE.test(l)).map(splitRow);
+    if (header || rows.length) res.push({ header, aligns, rows });
+  }
+  if (!res.length) {
+    const tl = lines.filter(l => l.includes('\t'));
+    if (tl.length) {
+      const all = tl.map(l => l.split('\t').map(s => s.trim()));
+      res.push({ header: all[0], aligns: [], rows: all.slice(1) });
+    }
+  }
+  for (const t of res) {
+    const n = Math.max(t.header ? t.header.length : 0, ...t.rows.map(r => r.length), 1);
+    const pad = r => { while (r.length < n) r.push(''); return r.slice(0, n); };
+    if (t.header) t.header = pad(t.header);
+    t.rows = t.rows.map(pad);
+    while (t.aligns.length < n) t.aligns.push(null);
+    t.aligns = t.aligns.slice(0, n);
+    t.n = n;
+  }
+  return res;
+}
+
+const ENT = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&nbsp;': ' ', '&quot;': '"' };
+function parseInline(str) {
+  str = str.replace(/&(amp|lt|gt|nbsp|quot);/g, m => ENT[m]);
+  const alnum = /[\p{L}\p{N}]/u;
+  return str.split(/<br\s*\/?>|\n/i).map(line => {
+    const segs = []; let b = false, it = false, buf = '';
+    const push = () => { if (buf) { segs.push({ t: buf, b, i: it, c: false }); buf = ''; } };
+    for (let k = 0; k < line.length; k++) {
+      const ch = line[k], prev = line[k - 1] || ' ', next = line[k + 1] || ' ';
+      if (ch === '\\' && /[\\`*_|#\[\]]/.test(next)) { buf += next; k++; continue; }
+      if (ch === '`') { const e = line.indexOf('`', k + 1); if (e > k) { push(); segs.push({ t: line.slice(k + 1, e), b, i: it, c: true }); k = e; continue; } }
+      if ((ch === '*' || ch === '_') && next === ch) {
+        const after = line[k + 2] || ' ';
+        if (ch === '*' || (b ? !alnum.test(after) : !alnum.test(prev))) { push(); b = !b; k++; continue; }
+      }
+      if (ch === '*' && !(/\s/.test(prev) && /\s/.test(next))) { push(); it = !it; continue; }
+      if (ch === '_' && (it ? !alnum.test(next) : !alnum.test(prev))) { push(); it = !it; continue; }
+      buf += ch;
+    }
+    push();
+    return segs;
+  });
+}
+function inlineHTML(str) {
+  return parseInline(str).map(segs => segs.map(sg => {
+    let s = esc(sg.t);
+    if (sg.c) s = `<span style="font-family:Consolas,'Courier New',monospace">${s}</span>`;
+    if (sg.i) s = `<i>${s}</i>`;
+    if (sg.b) s = `<b>${s}</b>`;
+    return s;
+  }).join('')).join('<br>');
+}
+
+/* ---------- Datenansicht: sortieren, runden, Spalten, transponieren ---------- */
+const NUM_RE = /^([-+−]?)(\d+)(?:([.,])(\d+))?(\s*[^\d\s.,].*)?$/;
+function numVal(s) {
+  const m = NUM_RE.exec(String(s).trim()); if (!m) return null;
+  const v = parseFloat(m[2] + '.' + (m[4] || '0'));
+  return { sign: m[1], v, n: (m[1] === '-' || m[1] === '−') ? -v : v, sep: m[3], suf: m[5] || '' };
+}
+function roundCell(s, d, defSep) {
+  const m = numVal(s); if (!m) return s;
+  let str = m.v.toFixed(d);
+  if ((m.sep || defSep) === ',') str = str.replace('.', ',');
+  return m.sign + str + m.suf;
+}
+const detectSep = src => src.rows.some(r => r.some(c => /\d,\d/.test(c))) ? ',' : '.';
+function cmpCells(a, b) {
+  const na = numVal(a), nb = numVal(b);
+  if (na && nb) return na.n - nb.n;
+  if (!a && b) return 1;
+  if (a && !b) return -1;
+  return strip(a).localeCompare(strip(b), 'de', { numeric: true, sensitivity: 'base' });
+}
+const srcTable = () => tables[tIdx] || PLACEHOLDER;
+function viewTable() {
+  const src = srcTable(), n = src.n;
+  let rows = src.rows.map(r => r.slice());
+  if (D.sortCol >= 0 && D.sortCol < n) { const k = D.sortCol; rows.sort((a, b) => D.sortDir * cmpCells(a[k], b[k])); }
+  if (D.decimals >= 0) { const sep = detectSep(src); rows = rows.map(r => r.map(s => roundCell(s, D.decimals, sep))); }
+  let vis = []; for (let c = 0; c < n; c++) if (!D.hidden[c]) vis.push(c);
+  if (!vis.length) vis = [0];
+  let header = src.header ? vis.map(c => src.header[c]) : null;
+  let aligns = vis.map(c => src.aligns[c] || null);
+  rows = rows.map(r => vis.map(c => r[c]));
+  let keys = vis.map(c => 'c' + c);
+  if (D.transpose) {
+    const all = header ? [header, ...rows] : rows;
+    if (all.length) {
+      const tr = vis.map((_, c) => all.map(r => r[c]));
+      header = tr[0]; rows = tr.slice(1);
+      aligns = all.map(() => null); keys = all.map((_, i) => 'r' + i);
+    }
+  }
+  return { header, aligns, rows, n: keys.length, keys };
+}
+
+/* ---------- Schrift & Messung ---------- */
+function famCSS() { const f = (S.fontCustom || '').trim() || S.font; return f.includes(',') ? f : `"${f}", sans-serif`; }
+function fontObj(st, pt) {
+  let px = pt * PT, fam = famCSS();
+  if (st.c) { px *= 0.9; fam = MONO; }
+  return { css: `${st.i ? 'italic ' : ''}${st.b ? 'bold ' : ''}${px.toFixed(2)}px ${fam}`, px, fam, b: !!st.b, i: !!st.i };
+}
+const baseCache = new Map();
+function baselineOff(font) {
+  if (baseCache.has(font.css)) return baseCache.get(font.css);
+  mctx.font = font.css;
+  const m = mctx.measureText('Hg');
+  const v = (m.fontBoundingBoxAscent !== undefined) ? (m.fontBoundingBoxAscent - m.fontBoundingBoxDescent) / 2
+    : (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+  baseCache.set(font.css, v);
+  return v;
+}
+function tokenize(lines, pt, forceB, forceI) {
+  return lines.map(segs => {
+    const toks = [];
+    for (const sg of segs) {
+      const font = fontObj({ b: sg.b || forceB, i: sg.i || forceI, c: sg.c }, pt);
+      mctx.font = font.css;
+      for (const p of sg.t.split(/(\s+)/)) {
+        if (!p) continue;
+        const sp = /^[ \t\r\n]+$/.test(p), t = sp ? ' ' : p;
+        toks.push({ t, font, sp, w: mctx.measureText(t).width });
+      }
+    }
+    return toks;
+  });
+}
+function wrapLines(tl, maxW) {
+  const out = [];
+  for (const toks of tl) {
+    let line = [], lw = 0;
+    const flush = () => { while (line.length && line[line.length - 1].sp) lw -= line.pop().w; out.push({ toks: line, w: lw }); line = []; lw = 0; };
+    for (const t of toks) {
+      if (!t.sp && line.length && lw + t.w > maxW + 0.01) flush();
+      if (t.sp && !line.length) continue;
+      line.push(t); lw += t.w;
+    }
+    flush();
+  }
+  return out;
+}
+function textBlock(text, pt, b, i, maxW) {
+  if (!text || !text.trim()) return null;
+  const lines = wrapLines(tokenize(parseInline(text), pt, b, i), maxW);
+  const lh = pt * PT * S.lineHeight;
+  return { lines, lh, h: lines.length * lh };
+}
+
+/* ---------- Layout ---------- */
+function resolveAlign(c, hdr) {
+  if (hdr && S.headerAlign !== 'col') return S.headerAlign;
+  const a = T.ca[V.keys[c]];
+  return (a && a !== 'md') ? a : (V.aligns[c] || 'left');
+}
+function layout() {
+  V = viewTable();
+  const n = V.n, K = V.keys;
+  const hasHdr = !!(S.useHeader && V.header);
+  const rows = V.header ? [V.header, ...V.rows] : V.rows.slice();
+  const cells = rows.map((r, ri) => r.map((txt, ci) => {
+    const hdr = hasHdr && ri === 0, pt = hdr ? S.headerFontSize : S.fontSize;
+    const tl = tokenize(parseInline(txt), pt, hdr ? S.headerBold : (S.firstColBold && ci === 0), false);
+    return { hdr, tl, lh: pt * PT * S.lineHeight, nat: Math.max(0, ...wrapLines(tl, Infinity).map(l => l.w)) };
+  }));
+  const nat = Array.from({ length: n }, (_, c) => Math.ceil(Math.max(0, ...cells.map(r => r[c].nat)) + 2 * S.padX));
+  const man = c => T.cw[K[c]] != null ? T.cw[K[c]] : null;
+  let w = nat.map((v, c) => man(c) != null ? man(c) : v);
+  if (S.widthMode === 'fixed') {
+    const target = Math.max(20, toPx(S.tableWidth, S.twUnit));
+    const auto = [], mans = [];
+    w.forEach((_, c) => (man(c) != null ? mans : auto).push(c));
+    const manSum = mans.reduce((s, c) => s + w[c], 0);
+    if (auto.length) {
+      const rem = Math.max(auto.length * 16, target - manSum);
+      const natSum = auto.reduce((s, c) => s + nat[c], 0) || 1;
+      auto.forEach(c => w[c] = rem * nat[c] / natSum);
+    } else if (manSum > 0) { const f = target / manSum; w = w.map(x => x * f); }
+  }
+  w = w.map(x => Math.max(8, x));
+  const h = rows.map((r, ri) => {
+    let mh = 0;
+    r.forEach((_, c) => {
+      const cell = cells[ri][c];
+      cell.lines = wrapLines(cell.tl, S.wrap ? w[c] - 2 * S.padX : Infinity);
+      mh = Math.max(mh, cell.lines.length * cell.lh);
+    });
+    return Math.max(mh + 2 * S.padY, S.minRowH, T.rh[ri] || 0);
+  });
+  const xs = [0]; w.forEach(v => xs.push(xs[xs.length - 1] + v));
+  const ys = [0]; h.forEach(v => ys.push(ys[ys.length - 1] + v));
+  return { rows, cells, w, h, xs, ys, W: xs[n], H: ys[rows.length], hasHdr, n, R: rows.length };
+}
+function geometry(L) {
+  const m = S.margin;
+  const cap = textBlock(S.capText, S.capSize, S.capBold, S.capItalic, L.W);
+  const note = textBlock(S.noteText, S.noteSize, false, S.noteItalic, L.W);
+  const minW = L.W + 2 * m;
+  const cw = Math.max(toPx(S.imgWidth || 0, S.twUnit), minW);
+  let ox = m;
+  if (cw > minW) ox = S.tablePos === 'center' ? (cw - L.W) / 2 : S.tablePos === 'right' ? cw - L.W - m : m;
+  let y = m, capY = 0, noteY = 0;
+  if (cap && S.capPos === 'top') { capY = y; y += cap.h + S.capGap; }
+  const oy = y; y += L.H;
+  if (cap && S.capPos !== 'top') { y += S.capGap; capY = y; y += cap.h; }
+  if (note) { y += S.noteGap; noteY = y; y += note.h; }
+  return { cw: Math.ceil(cw), ch: Math.ceil(y + m), ox, oy, cap, capY, note, noteY };
+}
+
+/* ---------- Linien (Standard + Einzel-Ausnahmen) ---------- */
+function edgeDefault(t, i) {
+  if (t === 'h') {
+    if (i === 0) return S.hTop ? S.outerW : 0;
+    if (i === L.R) return S.hBottom ? S.outerW : 0;
+    if (L.hasHdr && i === 1) return S.hHeader ? S.headerLineW : (S.hInner ? S.lineW : 0);
+    return S.hInner ? S.lineW : 0;
+  }
+  if (i === 0 || i === L.n) return S.vOuter ? S.outerW : 0;
+  return S.vInner ? S.lineW : 0;
+}
+function edgeCat(t, i) {
+  if (t === 'h') return (i === 0 || i === L.R) ? S.outerW : (L.hasHdr && i === 1) ? S.headerLineW : S.lineW;
+  return (i === 0 || i === L.n) ? S.outerW : S.lineW;
+}
+const edgeKey = (t, i, k) => `${t}:${i}:${k}`;
+function edgeW(t, i, k) {
+  const o = T.edges[edgeKey(t, i, k)];
+  if (o === true) return edgeCat(t, i) || 1;
+  if (o === false) return 0;
+  return edgeDefault(t, i);
+}
+function setEdge(e, on) {
+  const key = edgeKey(e.t, e.i, e.k);
+  if (on === (edgeDefault(e.t, e.i) > 0)) delete T.edges[key]; else T.edges[key] = on;
+}
+function rowBg(ri) {
+  const hdr = L.hasHdr && ri === 0, bi = L.hasHdr ? ri - 1 : ri;
+  if (hdr) return S.headerBgOn ? S.headerBg : null;
+  if (S.zebra && bi % 2 === 1) return S.zebraBg;
+  return S.bodyBgOn ? S.bodyBg : null;
+}
+
+/* ---------- Zeichnen (gemeinsam für Canvas und SVG) ---------- */
+function canvasPainter(c, scale) {
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, c.canvas.width, c.canvas.height);
+  c.setTransform(scale, 0, 0, scale, 0, 0);
+  return {
+    rect(x, y, w, h, fill) { c.fillStyle = fill; c.fillRect(x, y, w, h); },
+    push(x, y) { c.save(); c.translate(x, y); }, pop() { c.restore(); },
+    clip(x, y, w, h) { c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip(); }, unclip() { c.restore(); },
+    text(t, x, y, font, color) { c.font = font.css; c.fillStyle = color; c.fillText(t, x, y); },
+    line(pts, w, color, cap) {
+      c.strokeStyle = color; c.lineWidth = w; c.lineCap = cap; c.lineJoin = 'round';
+      c.beginPath(); pts.forEach((p, k) => k ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke();
+    }
+  };
+}
+function svgPainter() {
+  const out = [], defs = []; let id = 0;
+  return {
+    out, defs,
+    rect(x, y, w, h, fill) { out.push(`<rect x="${f2(x)}" y="${f2(y)}" width="${f2(w)}" height="${f2(h)}" fill="${fill}"/>`); },
+    push(x, y) { out.push(`<g transform="translate(${f2(x)} ${f2(y)})">`); }, pop() { out.push('</g>'); },
+    clip(x, y, w, h) { const k = 'c' + (id++); defs.push(`<clipPath id="${k}"><rect x="${f2(x)}" y="${f2(y)}" width="${f2(w)}" height="${f2(h)}"/></clipPath>`); out.push(`<g clip-path="url(#${k})">`); },
+    unclip() { out.push('</g>'); },
+    text(t, x, y, font, color) {
+      out.push(`<text x="${f2(x)}" y="${f2(y)}" font-family="${esc(font.fam.replace(/"/g, "'"))}" font-size="${f2(font.px)}"${font.b ? ' font-weight="bold"' : ''}${font.i ? ' font-style="italic"' : ''} fill="${color}" xml:space="preserve">${esc(t)}</text>`);
+    },
+    line(pts, w, color, cap) {
+      out.push(`<path d="M${pts.map(p => f2(p[0]) + ' ' + f2(p[1])).join(' L')}" fill="none" stroke="${color}" stroke-width="${f2(w)}" stroke-linecap="${cap}" stroke-linejoin="round"/>`);
+    }
+  };
+}
+function paintLines(P, lines, x0, cw, ty, lh, align, color) {
+  lines.forEach((ln, k) => {
+    let lx = align === 'right' ? x0 + cw - ln.w : align === 'center' ? x0 + (cw - ln.w) / 2 : x0;
+    const cy = ty + lh * (k + 0.5);
+    for (const t of ln.toks) { if (!t.sp) P.text(t.t, lx, cy + baselineOff(t.font), t.font, color); lx += t.w; }
+  });
+}
+function paint(P) {
+  const { xs, ys, w, h, W, H, n, R } = L;
+  if (!S.transparent) P.rect(0, 0, G.cw, G.ch, S.canvasBg);
+  if (G.cap) paintLines(P, G.cap.lines, G.ox, W, G.capY, G.cap.lh, S.capAlign, S.textColor);
+  if (G.note) paintLines(P, G.note.lines, G.ox, W, G.noteY, G.note.lh, S.noteAlign, S.textColor);
+  P.push(G.ox, G.oy);
+
+  for (let ri = 0; ri < R; ri++) { const bg = rowBg(ri); if (bg) P.rect(0, ys[ri], W, h[ri], bg); }
+
+  L.rows.forEach((r, ri) => r.forEach((_, ci) => {
+    const cell = L.cells[ri][ci], x0 = xs[ci], y0 = ys[ri], cw = w[ci], rh = h[ri];
+    const bh = cell.lines.length * cell.lh;
+    const ty = S.vAlign === 'top' ? y0 + S.padY : S.vAlign === 'bottom' ? y0 + rh - S.padY - bh : y0 + (rh - bh) / 2;
+    P.clip(x0, y0, cw, rh);
+    paintLines(P, cell.lines, x0 + S.padX, cw - 2 * S.padX, ty, cell.lh, resolveAlign(ci, cell.hdr), cell.hdr ? S.headerColor : S.textColor);
+    P.unclip();
+  }));
+
+  // Linien als zusammenhängende Abschnitte gleicher Stärke
+  const vAt = (c, r) => Math.max(r > 0 ? edgeW('v', c, r - 1) : 0, r < R ? edgeW('v', c, r) : 0);
+  const hAt = (r, c) => Math.max(c > 0 ? edgeW('h', r, c - 1) : 0, c < n ? edgeW('h', r, c) : 0);
+  for (let c = 0; c <= n; c++) for (let r = 0; r < R;) {
+    const lw = edgeW('v', c, r); if (lw <= 0) { r++; continue; }
+    let e = r + 1; while (e < R && edgeW('v', c, e) === lw) e++;
+    P.line([[xs[c], ys[r] - hAt(r, c) / 2], [xs[c], ys[e] + hAt(e, c) / 2]], lw, S.lineColor, 'butt');
+    r = e;
+  }
+  for (let r = 0; r <= R; r++) for (let c = 0; c < n;) {
+    const lw = edgeW('h', r, c); if (lw <= 0) { c++; continue; }
+    let e = c + 1; while (e < n && edgeW('h', r, e) === lw) e++;
+    P.line([[xs[c] - vAt(c, r) / 2, ys[r]], [xs[e] + vAt(e, r) / 2, ys[r]]], lw, S.lineColor, 'butt');
+    c = e;
+  }
+
+  for (const s of strokes) {
+    const pts = s.pts.length === 1 ? [s.pts[0], [s.pts[0][0] + 0.01, s.pts[0][1]]] : s.pts;
+    P.line(pts, s.w, s.color, s.kind === 'line' ? 'butt' : 'round');
+  }
+  P.pop();
+}
+function paintOverlay(c, scale) {
+  if (!hover) return;
+  c.setTransform(scale, 0, 0, scale, 0, 0);
+  c.translate(G.ox, G.oy);
+  const { xs, ys, W, H } = L;
+  c.strokeStyle = 'rgba(47,111,222,.8)';
+  c.beginPath();
+  if (mode === 'select') {
+    c.lineWidth = 2 / zoom; c.setLineDash([4 / zoom, 3 / zoom]);
+    if (hover.type === 'col') { c.moveTo(xs[hover.i + 1], -8); c.lineTo(xs[hover.i + 1], H + 8); }
+    else { c.moveTo(-8, ys[hover.i + 1]); c.lineTo(W + 8, ys[hover.i + 1]); }
+  } else if (mode === 'edge') {
+    c.lineWidth = 5 / zoom; c.strokeStyle = 'rgba(47,111,222,.45)';
+    if (hover.t === 'h') { c.moveTo(xs[hover.k], ys[hover.i]); c.lineTo(xs[hover.k + 1], ys[hover.i]); }
+    else { c.moveTo(xs[hover.i], ys[hover.k]); c.lineTo(xs[hover.i], ys[hover.k + 1]); }
+  }
+  c.stroke(); c.setLineDash([]);
+}
+
+let rafPending = false;
+function render() {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => { rafPending = false; renderNow(); });
+}
+function renderNow() {
+  baseCache.clear();
+  L = layout(); G = geometry(L);
+  const dpr = window.devicePixelRatio || 1, sc = zoom * dpr;
+  cv.width = Math.round(G.cw * sc); cv.height = Math.round(G.ch * sc);
+  cv.style.width = (G.cw * zoom) + 'px'; cv.style.height = (G.ch * zoom) + 'px';
+  paint(canvasPainter(ctx, sc));
+  paintOverlay(ctx, sc);
+  $('#wrap').classList.toggle('checker', S.transparent);
+  updateColInputs();
+  const mm = v => Math.round(v * 25.4 / 96);
+  const es = +S.exportScale;
+  $('#status').textContent = (tables.length ? '' : 'Keine Markdown-Tabelle gefunden · ') +
+    `Tabelle ${Math.round(L.W)} × ${Math.round(L.H)} px (${mm(L.W)} × ${mm(L.H)} mm) · Bild ${G.cw} × ${G.ch} px (${mm(G.cw)} × ${mm(G.ch)} mm) · ` +
+    `PNG ${Math.round(G.cw * es)} × ${Math.round(G.ch * es)} px bei ${Math.round(96 * es)} dpi · ${L.n} Spalten, ${L.R} Zeilen`;
+  if ($('#texPrevBox').open) $('#texPrev').value = buildLatex();
+  saveSoon();
+}
+
+/* ---------- Panels ---------- */
+function buildColPanel() {
+  const box = $('#cols');
+  box.innerHTML = '<span class="hint">#</span><span class="hint">Kopf</span><span class="hint">Breite px</span><span class="hint">Ausrichtung</span>';
+  for (let c = 0; c < V.n; c++) {
+    const nm = V.header ? strip(V.header[c]) : '';
+    box.insertAdjacentHTML('beforeend',
+      `<span>${c + 1}</span><span class="nm" title="${esc(nm)}">${esc(nm)}</span>` +
+      `<input type="number" min="8" data-col="${c}">` +
+      `<select data-calign="${c}"><option value="md">Markdown</option><option value="left">links</option><option value="center">zentriert</option><option value="right">rechts</option></select>`);
+  }
+  box.querySelectorAll('[data-col]').forEach(inp => inp.addEventListener('input', () => {
+    const k = V.keys[+inp.dataset.col];
+    if (inp.value === '') delete T.cw[k]; else T.cw[k] = Math.max(8, +inp.value);
+    render();
+  }));
+  box.querySelectorAll('[data-calign]').forEach(sel => sel.addEventListener('change', () => { T.ca[V.keys[+sel.dataset.calign]] = sel.value; render(); }));
+  updateColInputs();
+}
+function updateColInputs() {
+  if (!V) return;
+  $$('#cols [data-col]').forEach(inp => {
+    const c = +inp.dataset.col, v = T.cw[V.keys[c]];
+    if (L && L.w[c] != null) inp.placeholder = Math.round(L.w[c]);
+    if (document.activeElement !== inp) inp.value = v != null ? Math.round(v) : '';
+  });
+  $$('#cols [data-calign]').forEach(sel => sel.value = T.ca[V.keys[+sel.dataset.calign]] || 'md');
+}
+function buildDataPanel() {
+  const src = srcTable();
+  const names = Array.from({ length: src.n }, (_, c) => (src.header && strip(src.header[c])) || `Spalte ${c + 1}`);
+  $('#sortCol').innerHTML = '<option value="-1">nicht sortiert</option>' + names.map((nm, c) => `<option value="${c}">${esc(nm)}</option>`).join('');
+  $('#sortCol').value = D.sortCol; $('#sortDir').value = D.sortDir;
+  $('#decimals').value = D.decimals; $('#transpose').checked = D.transpose;
+  const box = $('#visCols'); box.innerHTML = '';
+  names.forEach((nm, c) => {
+    const lab = document.createElement('label'); lab.title = nm;
+    lab.innerHTML = `<input type="checkbox" ${D.hidden[c] ? '' : 'checked'}> ${esc(nm)}`;
+    lab.querySelector('input').onchange = e => { D.hidden[c] = !e.target.checked; ensureView(); render(); };
+    box.appendChild(lab);
+  });
+}
+function ensureView() { V = viewTable(); buildColPanel(); }
+$('#sortCol').onchange = e => { D.sortCol = +e.target.value; ensureView(); render(); };
+$('#sortDir').onchange = e => { D.sortDir = +e.target.value; ensureView(); render(); };
+$('#decimals').onchange = e => { D.decimals = +e.target.value; ensureView(); render(); };
+$('#transpose').onchange = e => { D.transpose = e.target.checked; T.edges = {}; T.rh = []; ensureView(); render(); };
+
+/* ---------- Markdown-Eingabe ---------- */
+function parseMd() {
+  const prevN = srcTable().n;
+  tables = parseAll($('#md').value);
+  if (tIdx >= tables.length) tIdx = 0;
+  const sel = $('#tblSel');
+  sel.hidden = tables.length <= 1;
+  sel.innerHTML = tables.map((t, i) => `<option value="${i}">Tabelle ${i + 1} (${t.n} Sp.)</option>`).join('');
+  sel.value = tIdx;
+  if (srcTable().n !== prevN) { T = freshT(); D = freshD(); }
+  buildDataPanel();
+  ensureView();
+}
+
+/* ---------- UI-Bindung ---------- */
+function syncUI() {
+  $$('[data-k]').forEach(el => {
+    const v = S[el.dataset.k];
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  });
+}
+$$('[data-k]').forEach(el => {
+  const h = () => {
+    const k = el.dataset.k;
+    let v = el.type === 'checkbox' ? el.checked : (el.type === 'number' || el.dataset.num) ? parseFloat(el.value) : el.value;
+    if (typeof v === 'number' && isNaN(v)) return;
+    if (k === 'twUnit') {
+      S.tableWidth = r1(fromPx(toPx(S.tableWidth, S.twUnit), v));
+      S.imgWidth = r1(fromPx(toPx(S.imgWidth, S.twUnit), v));
+      S.twUnit = v; syncUI();
+    } else if (k === 'widthMode' && v === 'fixed' && L) {
+      S.widthMode = v; S.tableWidth = r1(fromPx(L.W, S.twUnit)); syncUI();
+    } else S[k] = v;
+    if (k === 'useHeader') T.edges = {};
+    render();
+  };
+  el.addEventListener(el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input', h);
+});
+
+$('#md').addEventListener('input', () => { parseMd(); render(); });
+$('#tblSel').addEventListener('change', e => { tIdx = +e.target.value; T = freshT(); D = freshD(); buildDataPanel(); ensureView(); render(); });
+$('#btnOpen').onclick = () => $('#file').click();
+$('#file').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
+function loadFile(f) { f.text().then(t => { $('#md').value = t; tIdx = 0; parseMd(); render(); toast(`${f.name} geladen`); }); }
+['dragover', 'drop'].forEach(ev => document.addEventListener(ev, e => {
+  if (!e.dataTransfer || ![...e.dataTransfer.types].includes('Files')) return;
+  e.preventDefault();
+  if (ev === 'drop' && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+}));
+
+$$('[data-align]').forEach(b => b.onclick = () => { V.keys.forEach(k => T.ca[k] = b.dataset.align); render(); });
+$$('[data-lines]').forEach(b => b.onclick = () => { Object.assign(S, LINE_SETS[b.dataset.lines]); syncUI(); render(); });
+$('#btnResetW').onclick = () => { V.keys.forEach(k => delete T.cw[k]); render(); };
+$('#btnResetH').onclick = () => { T.rh = []; render(); };
+$('#btnEqualW').onclick = () => { if (!L) return; const avg = L.W / L.n; V.keys.forEach(k => T.cw[k] = avg); render(); };
+$('#btnResetEdges').onclick = () => { if (Object.keys(T.edges).length) { pushHist(); T.edges = {}; render(); } };
+
+/* ---------- Vorlagen ---------- */
+const presetBox = $('#presetBtns');
+Object.keys(PRESETS).forEach(name => {
+  const b = document.createElement('button'); b.textContent = name;
+  b.onclick = () => { Object.assign(S, PRESETS[name]); syncUI(); render(); };
+  presetBox.appendChild(b);
+});
+function styleOnly() { const o = { ...S }; NON_STYLE.forEach(k => delete o[k]); return o; }
+function getUserPresets() { try { return JSON.parse(localStorage.getItem(STORE + '.presets')) || {}; } catch { return {}; } }
+function setUserPresets(p) { try { localStorage.setItem(STORE + '.presets', JSON.stringify(p)); } catch { toast('Speichern im Browser nicht möglich'); } }
+function refreshUserPresets() {
+  const p = getUserPresets(), names = Object.keys(p);
+  $('#userPresets').innerHTML = names.length ? names.map(n => `<option>${esc(n)}</option>`).join('') : '<option value="">(keine eigenen Vorlagen)</option>';
+}
+$('#btnSavePreset').onclick = () => {
+  const name = $('#presetName').value.trim(); if (!name) { toast('Bitte einen Namen eingeben'); return; }
+  const p = getUserPresets(); p[name] = styleOnly(); setUserPresets(p); refreshUserPresets();
+  $('#userPresets').value = name; $('#presetName').value = ''; toast(`Vorlage „${name}“ gespeichert`);
+};
+/* Stile nur mit geprüften Werten übernehmen: bekannte Einstellungen, richtiger Typ, gültige Auswahlwerte */
+const HEX_RE = /^#[0-9a-f]{6}$/i, FONT_RE = /^[\p{L}\p{N} ,'"._-]{0,100}$/u;
+const selectOptions = k => { const el = document.querySelector(`select[data-k="${k}"]`); return el ? [...el.options].map(o => o.value) : null; };
+function sanitizeStyle(o) {
+  const out = {};
+  if (!o || typeof o !== 'object') return out;
+  for (const k of Object.keys(DEF)) {
+    if (NON_STYLE.includes(k) || !(k in o)) continue;
+    const d = DEF[k], v = o[k], opts = k === 'font' ? null : selectOptions(k);
+    if (typeof d === 'boolean') { if (typeof v === 'boolean') out[k] = v; }
+    else if (typeof d === 'number') { if (typeof v === 'number' && isFinite(v) && v >= 0 && v <= 10000 && (!opts || opts.includes(String(v)))) out[k] = v; }
+    else if (typeof v !== 'string') continue;
+    else if (HEX_RE.test(d)) { if (HEX_RE.test(v)) out[k] = v; }
+    else if (opts) { if (opts.includes(v)) out[k] = v; }
+    else if (FONT_RE.test(v)) out[k] = v;
+  }
+  return out;
+}
+function applyStyle(o) { Object.assign(S, sanitizeStyle(o)); syncUI(); render(); }
+$('#btnLoadPreset').onclick = () => { const p = getUserPresets()[$('#userPresets').value]; if (p) applyStyle(p); };
+$('#btnDelPreset').onclick = () => { const n = $('#userPresets').value; const p = getUserPresets(); if (n && p[n] && confirm(`Vorlage „${n}“ löschen?`)) { delete p[n]; setUserPresets(p); refreshUserPresets(); } };
+$('#btnExportStyle').onclick = async () => {
+  const name = $('#presetName').value.trim() || safeName() + '-stil';
+  download(new Blob([JSON.stringify(styleOnly(), null, 2)], { type: 'application/json' }), name.replace(/[\\/:*?"<>|]/g, '_') + '.json');
+  if (dirOK) { try { if (await writeToDir(name)) toast(`Exportiert, Kopie in „${dirHandle.name}“ abgelegt`); } catch { toast('Kopie im Stil-Ordner fehlgeschlagen'); } }
+};
+$('#btnImportStyle').onclick = () => $('#styleFile').click();
+$('#styleFile').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => { try { applyStyle(JSON.parse(t)); toast('Stil importiert'); } catch { toast('Ungültige JSON-Datei'); } });
+  e.target.value = '';
+};
+
+/* ---------- Stil-Ordner (File System Access API, nur Edge/Chrome) ---------- */
+const idb = (() => {
+  let p;
+  const open = () => p || (p = new Promise((res, rej) => {
+    const r = indexedDB.open('mdTableDesigner', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  return {
+    async get(k) { const d = await open(); return new Promise((res, rej) => { const q = d.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); },
+    async set(k, v) { const d = await open(); return new Promise((res, rej) => { const t = d.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+  };
+})();
+let dirHandle = null, dirOK = false;
+function updateDirUI() {
+  $('#dirName').textContent = dirHandle ? '📁 ' + dirHandle.name + (dirOK ? '' : ' (Freigabe nötig)') : 'kein Ordner gewählt';
+  $('#btnDirGrant').hidden = !dirHandle || dirOK;
+  ['#btnDirLoad', '#btnDirRefresh', '#btnDirSave', '#dirStyles'].forEach(s => $(s).disabled = !dirOK);
+}
+async function listDir() {
+  const names = [];
+  try { for await (const [name, h] of dirHandle.entries()) if (h.kind === 'file' && /\.json$/i.test(name)) names.push(name); }
+  catch { dirOK = false; updateDirUI(); toast('Stil-Ordner ist nicht lesbar'); return; }
+  names.sort((a, b) => a.localeCompare(b, 'de'));
+  const sel = $('#dirStyles'), prev = sel.value;
+  sel.innerHTML = names.length ? names.map(n => `<option value="${esc(n)}">${esc(n.replace(/\.json$/i, ''))}</option>`).join('') : '<option value="">(keine Stile im Ordner)</option>';
+  if (names.includes(prev)) sel.value = prev;
+}
+async function writeToDir(name) {
+  const file = name.replace(/[\\/:*?"<>|]/g, '_').trim() + '.json';
+  let exists = true;
+  try { await dirHandle.getFileHandle(file); } catch { exists = false; }
+  if (exists && !confirm(`„${file}“ gibt es im Stil-Ordner schon. Überschreiben?`)) return false;
+  const w = await (await dirHandle.getFileHandle(file, { create: true })).createWritable();
+  await w.write(JSON.stringify(styleOnly(), null, 2)); await w.close();
+  await listDir(); $('#dirStyles').value = file;
+  return true;
+}
+async function dirInit() {
+  if (!('showDirectoryPicker' in window)) { $('#folderBox').hidden = true; $('#folderNo').hidden = false; return; }
+  try { dirHandle = (await idb.get('styleDir')) || null; } catch { dirHandle = null; }
+  if (dirHandle) { try { dirOK = (await dirHandle.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch { dirOK = false; } }
+  updateDirUI();
+  if (dirOK) listDir();
+}
+$('#btnDirPick').onclick = async () => {
+  try {
+    dirHandle = await window.showDirectoryPicker({ id: 'tabellenStile', mode: 'readwrite' });
+    dirOK = true;
+    try { await idb.set('styleDir', dirHandle); } catch { }
+    updateDirUI(); listDir();
+  } catch (e) { if (e.name !== 'AbortError') toast('Ordner konnte nicht geöffnet werden'); }
+};
+$('#btnDirGrant').onclick = async () => {
+  try { dirOK = (await dirHandle.requestPermission({ mode: 'readwrite' })) === 'granted'; } catch { dirOK = false; }
+  updateDirUI(); if (dirOK) listDir();
+};
+$('#btnDirRefresh').onclick = listDir;
+$('#btnDirLoad').onclick = async () => {
+  const n = $('#dirStyles').value; if (!n) return;
+  try { applyStyle(JSON.parse(await (await (await dirHandle.getFileHandle(n)).getFile()).text())); toast(`Stil „${n.replace(/\.json$/i, '')}“ geladen`); }
+  catch { toast('Stil konnte nicht gelesen werden'); }
+};
+$('#dirStyles').addEventListener('dblclick', () => $('#btnDirLoad').click());
+$('#btnDirSave').onclick = async () => {
+  const name = $('#presetName').value.trim();
+  if (!name) { toast('Bitte oben einen Namen für den Stil eingeben'); $('#presetName').focus(); return; }
+  try { if (await writeToDir(name)) toast(`Stil in „${dirHandle.name}“ gespeichert`); }
+  catch { toast('Speichern im Stil-Ordner fehlgeschlagen'); }
+};
+$('#btnReset').onclick = () => {
+  if (!confirm('Alle Einstellungen, Spaltenbreiten und Zeichnungen zurücksetzen?')) return;
+  S = { ...DEF }; strokes = []; hist = []; T = freshT(); D = freshD();
+  parseMd(); syncUI(); render();
+};
+
+/* ---------- Werkzeuge ---------- */
+function setMode(m) {
+  mode = m; hover = null;
+  $$('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  cv.style.cursor = m === 'select' ? 'default' : m === 'erase' ? 'cell' : m === 'edge' ? 'pointer' : 'crosshair';
+  render();
+}
+$$('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+$('#zoom').oninput = e => { zoom = e.target.value / 100; $('#zoomLbl').textContent = e.target.value + ' %'; render(); };
+const pushHist = () => { hist.push(JSON.stringify({ s: strokes, e: T.edges })); if (hist.length > 100) hist.shift(); };
+function undo() { if (!hist.length) return; const h = JSON.parse(hist.pop()); strokes = h.s; T.edges = h.e; render(); }
+$('#btnUndo').onclick = undo;
+$('#btnClearStrokes').onclick = () => { if (strokes.length) { pushHist(); strokes = []; render(); } };
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !/TEXTAREA|INPUT/.test(document.activeElement.tagName)) { e.preventDefault(); undo(); }
+});
+
+function toLocal(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / zoom - G.ox, y: (e.clientY - r.top) / zoom - G.oy }; }
+function hit(p) {
+  const tol = 5 / zoom;
+  if (p.y >= -tol && p.y <= L.H + tol) for (let c = 1; c <= L.n; c++) if (Math.abs(p.x - L.xs[c]) < tol) return { type: 'col', i: c - 1 };
+  if (p.x >= -tol && p.x <= L.W + tol) for (let r = 1; r <= L.R; r++) if (Math.abs(p.y - L.ys[r]) < tol) return { type: 'row', i: r - 1 };
+  return null;
+}
+function hitEdge(p) {
+  const tol = 7 / zoom, { xs, ys, n, R } = L;
+  const idx = (arr, v, max) => { for (let i = 0; i < max; i++) if (v < arr[i + 1]) return i; return max - 1; };
+  let best = null, bd = tol;
+  if (p.x >= 0 && p.x <= L.W) for (let r = 0; r <= R; r++) { const d = Math.abs(p.y - ys[r]); if (d < bd) { bd = d; best = { t: 'h', i: r, k: idx(xs, p.x, n) }; } }
+  if (p.y >= 0 && p.y <= L.H) for (let c = 0; c <= n; c++) { const d = Math.abs(p.x - xs[c]); if (d < bd) { bd = d; best = { t: 'v', i: c, k: idx(ys, p.y, R) }; } }
+  return best;
+}
+function snapVal(v, arr) {
+  if (!$('#snap').checked) return v;
+  const tol = 8 / zoom; let best = v, bd = tol;
+  for (const a of arr) { const d = Math.abs(a - v); if (d < bd) { bd = d; best = a; } }
+  return best;
+}
+function segDist(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+  let t = l2 ? ((p.x - a[0]) * dx + (p.y - a[1]) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - a[0] - t * dx, p.y - a[1] - t * dy);
+}
+function eraseAt(p) {
+  const before = strokes.length;
+  strokes = strokes.filter(s => {
+    const tol = Math.max(6 / zoom, s.w / 2 + 2);
+    if (s.pts.length === 1) return Math.hypot(p.x - s.pts[0][0], p.y - s.pts[0][1]) > tol;
+    for (let k = 1; k < s.pts.length; k++) if (segDist(p, s.pts[k - 1], s.pts[k]) < tol) return false;
+    return true;
+  });
+  if (strokes.length !== before) { drag.erased = true; render(); }
+}
+
+cv.addEventListener('pointerdown', e => {
+  if (!L) return;
+  const p = toLocal(e);
+  cv.setPointerCapture(e.pointerId);
+  const pen = { color: $('#penColor').value, w: Math.max(0.25, +$('#penW').value || 1) };
+  if (mode === 'select') {
+    const h = hit(p); if (!h) return;
+    drag = { ...h, sx: p.x, sy: p.y, w0: L.w.slice(), h0: L.h.slice() };
+  } else if (mode === 'edge') {
+    const ed = hitEdge(p); if (!ed) return;
+    pushHist();
+    const target = !(edgeW(ed.t, ed.i, ed.k) > 0);
+    setEdge(ed, target);
+    drag = { edge: true, target, last: edgeKey(ed.t, ed.i, ed.k) };
+    render();
+  } else if (mode === 'brush') {
+    pushHist(); cur = { kind: 'free', ...pen, pts: [[p.x, p.y]] }; strokes.push(cur); drag = { draw: true }; render();
+  } else if (mode === 'line') {
+    pushHist();
+    const sx = snapVal(p.x, L.xs), sy = snapVal(p.y, L.ys);
+    cur = { kind: 'line', ...pen, pts: [[sx, sy], [sx, sy]] }; strokes.push(cur); drag = { draw: true };
+  } else if (mode === 'erase') {
+    pushHist(); drag = { erase: true, erased: false }; eraseAt(p);
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!L) return;
+  const p = toLocal(e);
+  if (!drag) {
+    let h = null;
+    if (mode === 'select') { h = hit(p); cv.style.cursor = h ? (h.type === 'col' ? 'col-resize' : 'row-resize') : 'default'; }
+    else if (mode === 'edge') h = hitEdge(p);
+    if (JSON.stringify(h) !== JSON.stringify(hover)) { hover = h; render(); }
+    return;
+  }
+  if (drag.type === 'col') {
+    const d = p.x - drag.sx, i = drag.i, K = V.keys;
+    const freeze = () => K.forEach((k, c) => T.cw[k] = drag.w0[c]);
+    if (S.widthMode === 'fixed' && i < L.n - 1) {
+      const a = drag.w0[i], b = drag.w0[i + 1], dd = Math.max(16 - a, Math.min(b - 16, d));
+      freeze(); T.cw[K[i]] = a + dd; T.cw[K[i + 1]] = b - dd;
+    } else if (S.widthMode === 'fixed') {
+      freeze(); T.cw[K[i]] = Math.max(16, drag.w0[i] + d);
+      S.tableWidth = r1(fromPx(K.reduce((s, k) => s + T.cw[k], 0), S.twUnit)); syncUI();
+    } else T.cw[K[i]] = Math.max(16, drag.w0[i] + d);
+    render();
+  } else if (drag.type === 'row') {
+    T.rh[drag.i] = Math.max(8, drag.h0[drag.i] + p.y - drag.sy); render();
+  } else if (drag.edge) {
+    const ed = hitEdge(p);
+    if (ed) { const key = edgeKey(ed.t, ed.i, ed.k); if (key !== drag.last) { setEdge(ed, drag.target); drag.last = key; } }
+    hover = ed; render();
+  } else if (drag.draw && cur.kind === 'free') {
+    cur.pts.push([p.x, p.y]); render();
+  } else if (drag.draw && cur.kind === 'line') {
+    const a = cur.pts[0]; let x = p.x, y = p.y;
+    if (!e.altKey) {
+      if (Math.abs(x - a[0]) >= Math.abs(y - a[1])) { y = a[1]; x = snapVal(x, L.xs); }
+      else { x = a[0]; y = snapVal(y, L.ys); }
+    }
+    cur.pts[1] = [x, y]; render();
+  } else if (drag.erase) eraseAt(p);
+});
+const endDrag = () => {
+  if (drag && drag.erase && !drag.erased) hist.pop();
+  if (drag && drag.draw && cur && cur.kind === 'line' && cur.pts[0][0] === cur.pts[1][0] && cur.pts[0][1] === cur.pts[1][1]) { strokes.pop(); hist.pop(); render(); }
+  drag = null; cur = null;
+};
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', () => { if (!drag && hover) { hover = null; render(); } });
+cv.addEventListener('dblclick', e => {
+  if (mode !== 'select' || !L) return;
+  const h = hit(toLocal(e)); if (!h) return;
+  if (h.type === 'col') delete T.cw[V.keys[h.i]]; else T.rh[h.i] = 0;
+  render();
+});
+
+/* ---------- Bild-Export: PNG, SVG, PDF ---------- */
+function exportCanvas() {
+  renderNow();
+  const sc = +S.exportScale || 1, c = document.createElement('canvas');
+  c.width = Math.round(G.cw * sc); c.height = Math.round(G.ch * sc);
+  paint(canvasPainter(c.getContext('2d'), sc));
+  return c;
+}
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(bytes) { let c = 0xffffffff; for (const b of bytes) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+function setPngDpi(png, dpi) {
+  const ppm = Math.round(dpi / 0.0254);
+  const chunk = new Uint8Array(21), dv = new DataView(chunk.buffer);
+  dv.setUint32(0, 9); chunk.set([0x70, 0x48, 0x59, 0x73], 4); // "pHYs"
+  dv.setUint32(8, ppm); dv.setUint32(12, ppm); chunk[16] = 1;
+  dv.setUint32(17, crc32(chunk.subarray(4, 17)));
+  const out = new Uint8Array(png.length + 21);
+  out.set(png.subarray(0, 33)); out.set(chunk, 33); out.set(png.subarray(33), 54); // nach IHDR einfügen
+  return out;
+}
+async function pngBlob() {
+  const c = exportCanvas();
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  return new Blob([setPngDpi(buf, 96 * (+S.exportScale || 1))], { type: 'image/png' });
+}
+function buildSVG() {
+  renderNow();
+  const P = svgPainter(); paint(P);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${f2(G.cw * 0.75)}pt" height="${f2(G.ch * 0.75)}pt" viewBox="0 0 ${G.cw} ${G.ch}">` +
+    (P.defs.length ? `<defs>${P.defs.join('')}</defs>` : '') + P.out.join('') + '</svg>';
+}
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+async function savePng() { download(await pngBlob(), safeName() + '.png'); }
+async function copyPng() {
+  try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob() })]); toast('Bild in die Zwischenablage kopiert'); }
+  catch (err) { toast('Kopieren nicht möglich – bitte „PNG speichern“ verwenden'); console.error(err); }
+}
+function saveSvg() { download(new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + buildSVG()], { type: 'image/svg+xml' }), safeName() + '.svg'); }
+function printPdf() {
+  const svg = buildSVG();
+  const wmm = f2(G.cw * 25.4 / 96), hmm = f2(G.ch * 25.4 / 96);
+  const w = window.open('', '_blank');
+  if (!w) { toast('Popup wurde blockiert – bitte Popups erlauben'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(safeName())}</title><style>@page{size:${wmm}mm ${hmm}mm;margin:0}html,body{margin:0;padding:0}svg{display:block;width:${wmm}mm;height:${hmm}mm}</style></head><body>${svg}</body></html>`);
+  w.document.close();
+  setTimeout(() => { w.focus(); w.print(); }, 400);
+}
+$('#btnPng').onclick = $('#hPng').onclick = savePng;
+$('#btnCopy').onclick = $('#hCopy').onclick = copyPng;
+$('#btnSvg').onclick = saveSvg;
+$('#btnPdf').onclick = printPdf;
+
+/* ---------- Word & Markdown ---------- */
+function buildHTML() {
+  renderNow();
+  const fam = famCSS().replace(/"/g, "'");
+  const bd = w => w > 0 ? `solid ${S.lineColor} ${ptStr(w)}` : 'none';
+  const fixedW = S.widthMode === 'fixed' || V.keys.some(k => T.cw[k] != null);
+  const pos = S.tablePos;
+  const para = (text, size, b, i, al, margin) =>
+    `<p style="margin:${margin};text-align:${al};font-family:${fam};font-size:${size}pt;color:${S.textColor};font-weight:${b ? 'bold' : 'normal'};font-style:${i ? 'italic' : 'normal'}">${inlineHTML(text)}</p>`;
+  const withCap = S.wordCaption && S.capText.trim();
+  let s = '';
+  if (withCap && S.capPos === 'top') s += para(S.capText, S.capSize, S.capBold, S.capItalic, S.capAlign, `0 0 ${ptStr(S.capGap)} 0`);
+  s += `<table cellspacing="0" cellpadding="0" border="0"${pos !== 'left' ? ` align="${pos}"` : ''} style="border-collapse:collapse;border:none;` +
+    `${fixedW ? `width:${ptStr(L.W)};` : ''}${pos === 'center' ? 'margin-left:auto;margin-right:auto;' : ''}mso-table-lspace:0;mso-table-rspace:0;mso-padding-alt:0">`;
+  L.rows.forEach((r, ri) => {
+    const manualH = (T.rh[ri] || 0) > 0 || S.minRowH > 0;
+    s += `<tr${manualH ? ` style="height:${ptStr(L.h[ri])}"` : ''}>`;
+    r.forEach((txt, ci) => {
+      const cell = L.cells[ri][ci], tag = cell.hdr ? 'th' : 'td', bg = rowBg(ri);
+      const size = cell.hdr ? S.headerFontSize : S.fontSize;
+      const bold = cell.hdr ? S.headerBold : (S.firstColBold && ci === 0);
+      const color = cell.hdr ? S.headerColor : S.textColor;
+      const st = [
+        `border-top:${bd(edgeW('h', ri, ci))}`, `border-bottom:${bd(edgeW('h', ri + 1, ci))}`,
+        `border-left:${bd(edgeW('v', ci, ri))}`, `border-right:${bd(edgeW('v', ci + 1, ri))}`,
+        `padding:${ptStr(S.padY)} ${ptStr(S.padX)}`, `vertical-align:${S.vAlign}`,
+        bg ? `background:${bg}` : '', fixedW ? `width:${ptStr(L.w[ci])}` : ''
+      ].filter(Boolean).join(';');
+      const pst = `margin:0;text-align:${resolveAlign(ci, cell.hdr)};font-family:${fam};font-size:${size}pt;` +
+        `line-height:${f2(size * S.lineHeight)}pt;color:${color};font-weight:${bold ? 'bold' : 'normal'}`;
+      s += `<${tag} style="${st}"${fixedW ? ` width="${Math.round(L.w[ci])}"` : ''}><p style="${pst}">${inlineHTML(txt) || '&nbsp;'}</p></${tag}>`;
+    });
+    s += '</tr>';
+  });
+  s += '</table>';
+  if (withCap && S.capPos !== 'top') s += para(S.capText, S.capSize, S.capBold, S.capItalic, S.capAlign, `${ptStr(S.capGap)} 0 0 0`);
+  if (S.wordCaption && S.noteText.trim()) s += para(S.noteText, S.noteSize, false, S.noteItalic, S.noteAlign, `${ptStr(S.noteGap)} 0 0 0`);
+  return s;
+}
+function buildMarkdown() {
+  renderNow();
+  const rows = V.header ? [V.header, ...V.rows] : [Array(V.n).fill(''), ...V.rows];
+  const al = V.keys.map((k, c) => { const a = T.ca[k]; return (a && a !== 'md') ? a : V.aligns[c]; });
+  const len = s => [...s].length;
+  const ws = al.map((_, c) => Math.max(3, ...rows.map(r => len(r[c]))));
+  const pad = (s, w, a) => {
+    const d = w - len(s); if (d <= 0) return s;
+    if (a === 'right') return ' '.repeat(d) + s;
+    if (a === 'center') { const l = Math.floor(d / 2); return ' '.repeat(l) + s + ' '.repeat(d - l); }
+    return s + ' '.repeat(d);
+  };
+  const line = r => '| ' + r.map((s, c) => pad(s, ws[c], al[c])).join(' | ') + ' |';
+  const sep = '| ' + ws.map((w, c) => {
+    const a = al[c];
+    return a === 'center' ? ':' + '-'.repeat(w - 2) + ':' : a === 'right' ? '-'.repeat(w - 1) + ':' : a === 'left' ? ':' + '-'.repeat(w - 1) : '-'.repeat(w);
+  }).join(' | ') + ' |';
+  let out = [line(rows[0]), sep, ...rows.slice(1).map(line)].join('\n');
+  if (S.capText.trim()) out = S.capPos === 'top' ? S.capText.trim() + '\n\n' + out : out + '\n\n' + S.capText.trim();
+  if (S.noteText.trim()) out += '\n\n' + S.noteText.trim();
+  return out;
+}
+async function copyForWord() {
+  const html = buildHTML();
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([buildMarkdown()], { type: 'text/plain' })
+    })]);
+    toast('Kopiert – in Word mit Strg+V einfügen');
+  } catch (err) {
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;left:-10000px;top:0;background:#fff;color:#000';
+    div.innerHTML = html; document.body.appendChild(div);
+    const range = document.createRange(); range.selectNodeContents(div);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges(); div.remove();
+    toast(ok ? 'Kopiert – in Word mit Strg+V einfügen' : 'Kopieren nicht möglich – bitte .doc-Datei speichern');
+  }
+}
+function saveDoc() {
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">` +
+    `<head><meta charset="utf-8"><title>${esc(safeName())}</title><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--></head>` +
+    `<body>${buildHTML()}</body></html>`;
+  download(new Blob(['﻿' + doc], { type: 'application/msword' }), safeName() + '.doc');
+}
+async function copyText(text, msg) {
+  try { await navigator.clipboard.writeText(text); toast(msg); }
+  catch {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy'); ta.remove(); toast(ok ? msg : 'Kopieren nicht möglich');
+  }
+}
+$('#btnWord').onclick = $('#hWord').onclick = copyForWord;
+$('#btnDoc').onclick = saveDoc;
+$('#btnMdCopy').onclick = () => copyText(buildMarkdown(), 'Markdown kopiert');
+$('#btnMdSave').onclick = () => download(new Blob([buildMarkdown() + '\n'], { type: 'text/markdown' }), safeName() + '.md');
+$('#btnMdApply').onclick = () => {
+  if (!confirm('Den Text im Markdown-Feld durch die bearbeitete Tabelle ersetzen? Sortierung, Rundung und Spaltenauswahl werden dabei fest übernommen.')) return;
+  renderNow();
+  const keepCw = {}, keepCa = {};
+  V.keys.forEach((k, c) => { if (T.cw[k] != null) keepCw['c' + c] = T.cw[k]; if (T.ca[k]) keepCa['c' + c] = T.ca[k]; });
+  const md = buildMarkdown().split('\n\n').find(b => b.trim().startsWith('|'));
+  $('#md').value = md; tables = []; tIdx = 0; D = freshD();
+  parseMd(); T.cw = keepCw; T.ca = keepCa; T.rh = []; ensureView(); render();
+  toast('Ins Eingabefeld übernommen');
+};
+
+/* ---------- LaTeX ---------- */
+const TEX_ESC = {
+  '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#', '_': '\\_', '{': '\\{', '}': '\\}',
+  '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', '<': '\\textless{}', '>': '\\textgreater{}', '|': '\\textbar{}',
+  ' ': '~', '−': '$-$'
+};
+const texEsc = s => s.replace(/[\\&%$#_{}~^<>| −]/g, ch => TEX_ESC[ch]);
+function texInline(str, br) {
+  return parseInline(str).map(segs => segs.map(sg => {
+    let s = texEsc(sg.t);
+    if (sg.c) s = `\\texttt{${s}}`;
+    if (sg.i) s = `\\textit{${s}}`;
+    if (sg.b) s = `\\textbf{${s}}`;
+    return s;
+  }).join('')).join(br);
+}
+const hexOf = c => c.replace('#', '').toUpperCase();
+const rgbOf = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+const isBlackish = c => Math.max(...rgbOf(c)) <= 0x30;
+const isWhitish = c => Math.min(...rgbOf(c)) >= 0xfc;
+function buildLatex() {
+  const n = L.n, R = L.R, pkgs = new Set();
+  const pt = px => f2(px * 0.75);
+  const same = (a, b) => Math.abs(a - b) < 0.01;
+  const colors = S.texColors;
+
+  let hasV = false, hasRules = false;
+  for (let c = 0; c <= n; c++) for (let r = 0; r < R; r++) if (edgeW('v', c, r) > 0) hasV = true;
+  for (let r = 0; r <= R; r++) for (let c = 0; c < n; c++) if (edgeW('h', r, c) > 0) hasRules = true;
+  const book = S.texBooktabs && !hasV;
+  if (book && hasRules) pkgs.add('booktabs');
+  const base = S.lineW > 0 ? S.lineW : 1;
+
+  const vTok = w => {
+    if (w <= 0) return '';
+    if (same(w, base)) return '|';
+    pkgs.add('array'); return `!{\\vrule width ${pt(w)}pt}`;
+  };
+  const fixedW = S.widthMode === 'fixed' || V.keys.some(k => T.cw[k] != null);
+  const colP = Array.from({ length: n }, (_, c) => fixedW || L.cells.some(r => r[c].lines.length > 1));
+  const vChar = S.vAlign === 'top' ? 'p' : S.vAlign === 'bottom' ? 'b' : 'm';
+  const colType = (c, al) => {
+    if (!colP[c]) return al[0];
+    pkgs.add('array');
+    const ra = al === 'center' ? '\\centering' : al === 'right' ? '\\raggedleft' : '\\raggedright';
+    return `>{${ra}\\arraybackslash}${vChar}{${f2(Math.max(4, L.w[c] - 2 * S.padX) * 25.4 / 96)}mm}`;
+  };
+  const most = arr => { const m = new Map(); arr.forEach(v => m.set(v, (m.get(v) || 0) + 1)); return [...m].sort((a, b) => b[1] - a[1])[0][0]; };
+  const colV = Array.from({ length: n + 1 }, (_, c) => most(Array.from({ length: R }, (_, r) => edgeW('v', c, r))));
+  const bodyAl = Array.from({ length: n }, (_, c) => resolveAlign(c, false));
+  let spec = vTok(colV[0]);
+  for (let c = 0; c < n; c++) spec += colType(c, bodyAl[c]) + vTok(colV[c + 1]);
+
+  const fm = S.texFont;
+  const cellTex = (ri, ci) => {
+    const cell = L.cells[ri][ci];
+    let s = texInline(L.rows[ri][ci], colP[ci] ? '\\newline ' : ' ');
+    const bold = cell.hdr ? S.headerBold : (S.firstColBold && ci === 0);
+    if (bold && s) s = `\\textbf{${s}}`;
+    const col = cell.hdr ? S.headerColor : S.textColor;
+    if (colors && s && !isBlackish(col)) { pkgs.add('xcolor'); s = `\\textcolor[HTML]{${hexOf(col)}}{${s}}`; }
+    if (cell.hdr && fm !== 'doc' && S.headerFontSize !== S.fontSize && s)
+      s = `{\\fontsize{${S.headerFontSize}}{${f2(S.headerFontSize * S.lineHeight)}}\\selectfont ${s}}`;
+    const al = resolveAlign(ci, cell.hdr);
+    const left = edgeW('v', 0, ri), right = edgeW('v', ci + 1, ri);
+    if (al !== bodyAl[ci] || (ci === 0 && left !== colV[0]) || right !== colV[ci + 1])
+      s = `\\multicolumn{1}{${ci === 0 ? vTok(left) : ''}${colType(ci, al)}${vTok(right)}}{${s}}`;
+    return s;
+  };
+  const ruleAt = r => {
+    const ws = Array.from({ length: n }, (_, c) => edgeW('h', r, c));
+    if (ws.every(w => w <= 0)) return '';
+    if (ws.every(w => w === ws[0])) {
+      const w = ws[0];
+      if (book) return (r === 0 ? '\\toprule' : r === R ? '\\bottomrule' : '\\midrule') + `[${pt(w)}pt]`;
+      if (same(w, base)) return '\\hline';
+      pkgs.add('makecell'); return `\\Xhline{${pt(w)}pt}`;
+    }
+    const parts = [];
+    for (let c = 0; c < n;) {
+      const w = ws[c]; if (w <= 0) { c++; continue; }
+      let e = c + 1; while (e < n && ws[e] === w) e++;
+      const rng = `${c + 1}-${e}`;
+      if (book) parts.push(`\\cmidrule[${pt(w)}pt]{${rng}}`);
+      else if (same(w, base)) parts.push(`\\cline{${rng}}`);
+      else { pkgs.add('makecell'); parts.push(`\\Xcline{${rng}}{${pt(w)}pt}`); }
+      c = e;
+    }
+    return parts.join(' ');
+  };
+
+  // Zellen erzeugen und Spalten im Code bündig ausrichten
+  const cells = L.rows.map((r, ri) => r.map((_, ci) => cellTex(ri, ci)));
+  const cw = Array.from({ length: n }, (_, c) => Math.min(40, Math.max(...cells.map(r => r[c].length))));
+  const pres = cells.map((_, ri) => {
+    const bg = colors ? rowBg(ri) : null;
+    return bg && !isWhitish(bg) ? `\\rowcolor[HTML]{${hexOf(bg)}} ` : '';
+  });
+  const usesRowColor = pres.some(Boolean);
+  if (usesRowColor) pkgs.add('xcolor');
+  const preW = Math.max(...pres.map(p => p.length));
+  const rowLines = cells.map((r, ri) => pres[ri].padEnd(preW) + r.map((s, c) => c < n - 1 ? s.padEnd(cw[c]) : s).join(' & ') + ' \\\\');
+
+  // Einstellungen
+  const set = [];
+  if (fm === 'full') {
+    pkgs.add('fontspec');
+    set.push(`\\fontspec{${((S.fontCustom || '').trim() || S.font).split(',')[0].replace(/["']/g, '').trim()}}`);
+  }
+  if (fm !== 'doc') set.push(`\\fontsize{${S.fontSize}}{${f2(S.fontSize * S.lineHeight)}}\\selectfont`);
+  set.push(`\\setlength{\\tabcolsep}{${pt(S.padX)}pt}`);
+  const lhPt = fm === 'doc' ? S.fontSize * 1.2 : S.fontSize * S.lineHeight;
+  const stretch = f2((lhPt + 2 * S.padY * 0.75) / lhPt);
+  if (!same(stretch, 1)) set.push(`\\renewcommand{\\arraystretch}{${stretch}}`);
+  if (hasV || (!book && hasRules)) set.push(`\\setlength{\\arrayrulewidth}{${pt(base)}pt}`);
+  if (book && usesRowColor) set.push('\\setlength{\\aboverulesep}{0pt}\\setlength{\\belowrulesep}{0pt}');
+  if (colors && hasRules && !isBlackish(S.lineColor)) { pkgs.add('xcolor'); set.push(`\\arrayrulecolor[HTML]{${hexOf(S.lineColor)}}`); }
+
+  const tab = [`\\begin{tabular}{${spec}}`];
+  const top = ruleAt(0); if (top) tab.push(top);
+  rowLines.forEach((ln, ri) => { tab.push('  ' + ln); const rr = ruleAt(ri + 1); if (rr) tab.push(rr); });
+  tab.push('\\end{tabular}');
+
+  // Beschriftung, Label, Fußnote
+  const capRaw = S.capText.trim().replace(/^(\*\*|__)?\s*(Tabelle|Table|Tab\.)\s*\d+\s*[:.]?\s*(\*\*|__)?\s*/i, '');
+  const cap = capRaw ? texInline(capRaw, ' ') : '';
+  const label = (S.texLabel || '').trim() || ('tab:' + (safeName().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tabelle'));
+  let note = [];
+  if (S.noteText.trim()) {
+    const ra = S.noteAlign === 'center' ? '\\centering' : S.noteAlign === 'right' ? '\\raggedleft' : '\\raggedright';
+    const sz = fm === 'doc' ? '\\footnotesize' : `\\fontsize{${S.noteSize}}{${f2(S.noteSize * S.lineHeight)}}\\selectfont`;
+    let t = texInline(S.noteText.trim(), '\\\\ ');
+    if (S.noteItalic) t = `\\textit{${t}}`;
+    note = [`\\par\\vspace{${pt(S.noteGap)}pt}`, `{${sz}${ra} ${t}\\par}`];
+  }
+
+  const out = ['% Erzeugt mit Tabellen-Designer'];
+  const order = ['array', 'booktabs', 'makecell', 'xcolor', 'fontspec'];
+  const used = order.filter(p => pkgs.has(p));
+  if (used.length) {
+    out.push('% Benötigte Pakete in der Präambel:');
+    used.forEach(p => out.push(p === 'xcolor' ? '%   \\usepackage[table]{xcolor}' : `%   \\usepackage{${p}}`));
+    if (pkgs.has('fontspec')) out.push('% fontspec: Dokument mit XeLaTeX oder LuaLaTeX übersetzen.');
+  }
+  if (strokes.length) out.push('% Hinweis: Freihand-Zeichnungen und gezeichnete Linien sind nicht enthalten.');
+  if (T.rh.some(v => v > 0) || S.minRowH > 0) out.push('% Hinweis: Manuelle Zeilenhöhen werden nicht übernommen.');
+
+  const ind = a => a.map(l => '  ' + l);
+  if (S.texEnv === 'table') {
+    out.push('\\begin{table}[htbp]');
+    out.push(...ind([S.tablePos === 'right' ? '\\raggedleft' : S.tablePos === 'left' ? '\\raggedright' : '\\centering', ...set]));
+    if (cap && S.capPos === 'top') out.push(`  \\caption{${cap}}`, `  \\label{${label}}`);
+    out.push(...ind(tab));
+    if (cap && S.capPos !== 'top') out.push(`  \\caption{${cap}}`, `  \\label{${label}}`);
+    out.push(...ind(note));
+    out.push('\\end{table}');
+  } else {
+    out.push('\\begingroup', ...ind(set), ...ind(tab), ...ind(note), '\\endgroup');
+  }
+  return out.join('\n') + '\n';
+}
+$('#btnTexCopy').onclick = () => { renderNow(); copyText(buildLatex(), 'LaTeX kopiert'); };
+$('#btnTexSave').onclick = () => { renderNow(); download(new Blob([buildLatex()], { type: 'text/x-tex' }), safeName() + '.tex'); };
+$('#texPrevBox').addEventListener('toggle', render);
+
+/* ---------- Speichern im Browser ---------- */
+let saveTimer = null;
+function saveSoon() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(STORE, JSON.stringify({ S, md: $('#md').value, T, D, strokes, tIdx, srcN: srcTable().n })); } catch { }
+  }, 400);
+}
+function restore() {
+  let st = null; try { st = JSON.parse(localStorage.getItem(STORE)); } catch { }
+  $('#md').value = st && typeof st.md === 'string' ? st.md : SAMPLE;
+  if (st && st.S) {
+    S = { ...DEF, ...sanitizeStyle(st.S) };
+    NON_STYLE.forEach(k => { if (typeof st.S[k] === typeof DEF[k]) S[k] = st.S[k]; });
+  }
+  tIdx = (st && st.tIdx) || 0;
+  parseMd();
+  if (st && st.srcN === srcTable().n) {
+    if (st.T && st.T.cw) T = { ...freshT(), ...st.T };
+    if (st.D) D = { ...freshD(), ...st.D };
+    buildDataPanel(); ensureView();
+  }
+  if (st && Array.isArray(st.strokes)) strokes = st.strokes;
+}
+
+/* ---------- Seitenleiste verbreitern ---------- */
+(() => {
+  const aside = $('aside'), sp = $('#splitter'), KEY = STORE + '.asideW';
+  const setW = w => { aside.style.width = Math.max(260, Math.min(window.innerWidth * 0.75, w)) + 'px'; };
+  try { const w = +localStorage.getItem(KEY); if (w) setW(w); } catch { }
+  let start = null;
+  sp.addEventListener('pointerdown', e => {
+    sp.setPointerCapture(e.pointerId);
+    start = { x: e.clientX, w: aside.getBoundingClientRect().width };
+    sp.classList.add('active'); document.body.classList.add('resizing');
+  });
+  sp.addEventListener('pointermove', e => { if (start) setW(start.w + e.clientX - start.x); });
+  const end = () => {
+    if (!start) return;
+    start = null; sp.classList.remove('active'); document.body.classList.remove('resizing');
+    try { localStorage.setItem(KEY, Math.round(aside.getBoundingClientRect().width)); } catch { }
+  };
+  sp.addEventListener('pointerup', end);
+  sp.addEventListener('pointercancel', end);
+  sp.addEventListener('dblclick', () => { aside.style.width = ''; try { localStorage.removeItem(KEY); } catch { } });
+})();
+
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
+
+restore();
+syncUI();
+refreshUserPresets();
+dirInit();
+setMode('select');
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+
+/* ---------- Installierte App (Edge/Chrome) ---------- */
+// Offline-Cache; Service Worker laufen nur über http(s), nicht bei file://.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => { });
+// Im Explorer per „Öffnen mit“ an die installierte App übergebene Dateien laden.
+if ('launchQueue' in window) launchQueue.setConsumer(async p => { if (p.files && p.files[0]) loadFile(await p.files[0].getFile()); });
+</script>
+</body>
+</html>

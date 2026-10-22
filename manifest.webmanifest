@@ -1,0 +1,29 @@
+{
+  "name": "Tabellen-Designer",
+  "short_name": "Tabellen-Designer",
+  "description": "Markdown-Tabellen gestalten und als Bild, Word-Tabelle oder LaTeX exportieren.",
+  "lang": "de",
+  "id": "./TableTransformer.html",
+  "start_url": "./TableTransformer.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f7",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./TableTransformer.html",
+      "accept": {
+        "text/markdown": [".md", ".markdown"],
+        "text/csv": [".csv"],
+        "text/tab-separated-values": [".tsv"],
+        "text/plain": [".txt"]
+      }
+    }
+  ]
+}
