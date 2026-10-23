@@ -11,6 +11,7 @@ Der Tabellen-Designer ist eine einzelne HTML-Datei ohne Abhängigkeiten. Er läu
 ## Funktionen
 
 - **Eingabe:** Markdown-Tabellen, aus Excel kopierte Zellen (Tabulator-getrennt), `.md`/`.csv`/`.tsv`/`.txt`-Dateien per Öffnen-Dialog oder Drag & Drop
+- **Formatierung und Formeln in Zellen:** `**fett**`, `*kursiv*`, `~~durchgestrichen~~`, `` `code` ``, `<br>`, `<sup>`/`<sub>`, HTML-Entities wie `&alpha;`. Einfache LaTeX-Formeln in `$…$` werden mit Hoch- und Tiefstellung dargestellt, z. B. `$R^2$`, `$\alpha = 0{,}05$`, `$\bar{x} \pm SD$`, `$m/s^2$`, `$\Delta T \leq 5\,K$`, `$20^\circ C$`. Unterstützt werden griechische Buchstaben, gängige Operatoren und Relationen, `\frac`, `\sqrt`, `\text`, `\bar`/`\hat`/`\vec`. Beim LaTeX-Export bleiben Formeln unverändert als `$…$` erhalten. Brüche erscheinen in einer Zeile als `a/b`. Ein Dollarzeichen als Text schreibt man als `\$`
 - **Daten:** sortieren, Zahlen runden, Zeilen und Spalten tauschen, Spalten ausblenden
 - **Gestaltung:** Schrift, Ausrichtung, Spaltenbreiten und Zeilenhöhen, Linien, Farben, Zebrastreifen, Beschriftung und Fußnote
 - **Stile:** Vorlagen, eigene Stile im Browser oder in einem Ordner speichern, als JSON exportieren/importieren

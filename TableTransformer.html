@@ -84,7 +84,7 @@ canvas{display:block;touch-action:none}
       <span style="flex:1"></span>
     </div>
     <div class="row"><label><input type="checkbox" data-k="useHeader"> Erste Zeile ist Kopfzeile</label></div>
-    <p class="hint">Unterstützt **fett**, *kursiv*, `code`, &lt;br&gt; und Ausrichtung per :---:. Auch aus Excel kopierte Zellen (Tabulator-getrennt) funktionieren. Der Stil bleibt erhalten, wenn du eine neue Tabelle einfügst.</p>
+    <p class="hint">Unterstützt **fett**, *kursiv*, ~~durchgestrichen~~, `code`, &lt;br&gt;, &lt;sup&gt;/&lt;sub&gt; und Ausrichtung per :---:. Formeln in $…$, z. B. $R^2$, $\alpha = 0{,}05$, $\bar{x} \pm SD$, $m/s^2$, $H_2O$, $20^\circ C$. Auch aus Excel kopierte Zellen (Tabulator-getrennt) funktionieren. Der Stil bleibt erhalten, wenn du eine neue Tabelle einfügst.</p>
   </details>
 
   <details open>
@@ -348,7 +348,7 @@ const r1 = v => Math.round(v * 10) / 10;
 const f2 = v => +(+v).toFixed(2);
 const ptStr = v => f2(v * 0.75) + 'pt';
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-const strip = s => s.replace(/<br\s*\/?>/gi, ' ').replace(/[*_`]/g, '').replace(/\\\|/g, '|');
+const strip = s => parseInline(s).map(segs => segs.map(sg => sg.t).join('')).join(' ');
 const safeName = () => (S.fileName || 'tabelle').replace(/[\\/:*?"<>|]/g, '_');
 
 /* ---------- Markdown parsen ---------- */
@@ -408,17 +408,156 @@ function parseAll(text) {
   return res;
 }
 
-const ENT = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&nbsp;': ' ', '&quot;': '"' };
+// Benannte und numerische HTML-Entities (&alpha;, &#178; …) über ein textarea dekodieren
+const entBox = document.createElement('textarea');
+const decodeEnt = s => s.replace(/&(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/gi, m => { entBox.innerHTML = m; return entBox.value; });
+
+/* ---------- Einfache Formeln: $…$ → Unicode mit Hoch-/Tiefstellung ---------- */
+// Segmente: t Text, b fett, i kursiv, c Code, v +1 hoch / −1 tief, s durchgestrichen, m LaTeX-Quelle und mid Nummer einer Formel
+const MATH_SYM = (() => {
+  const o = {}, add = (type, list) => list.split(' ').filter(Boolean).forEach(p => { const e = p.indexOf('=', 1); o[p.slice(0, e)] = { t: p.slice(e + 1), type }; });
+  add('greek', 'alpha=α beta=β gamma=γ delta=δ epsilon=ϵ varepsilon=ε zeta=ζ eta=η theta=θ vartheta=ϑ iota=ι kappa=κ lambda=λ mu=μ nu=ν xi=ξ ' +
+    'pi=π varpi=ϖ rho=ρ varrho=ϱ sigma=σ varsigma=ς tau=τ upsilon=υ phi=ϕ varphi=φ chi=χ psi=ψ omega=ω');
+  add('ord', 'Gamma=Γ Delta=Δ Theta=Θ Lambda=Λ Xi=Ξ Pi=Π Sigma=Σ Upsilon=Υ Phi=Φ Psi=Ψ Omega=Ω ohm=Ω micro=µ ' +
+    'infty=∞ partial=∂ nabla=∇ sum=∑ prod=∏ int=∫ oint=∮ forall=∀ exists=∃ emptyset=∅ varnothing=∅ ell=ℓ hbar=ℏ angle=∠ ' +
+    'degree=° prime=′ ldots=… cdots=⋯ dots=… AA=Å permil=‰ %=% $=$ #=# &=& _=_ {={ }=} |=‖ langle=⟨ rangle=⟩ lvert=| rvert=| vert=| ' +
+    'checkmark=✓ star=⋆ dagger=† ddagger=‡ bullet=•');
+  add('bin', 'pm=± mp=∓ times=× cdot=· div=÷ circ=∘ cup=∪ cap=∩ wedge=∧ vee=∨ oplus=⊕ otimes=⊗ setminus=∖ ast=∗');
+  add('rel', 'le=≤ leq=≤ ge=≥ geq=≥ ne=≠ neq=≠ approx=≈ sim=∼ simeq=≃ cong=≅ equiv=≡ propto=∝ ll=≪ gg=≫ in=∈ notin=∉ ni=∋ ' +
+    'subset=⊂ subseteq=⊆ supset=⊃ supseteq=⊇ to=→ rightarrow=→ leftarrow=← gets=← leftrightarrow=↔ Rightarrow=⇒ Leftarrow=⇐ ' +
+    'Leftrightarrow=⇔ iff=⇔ implies=⇒ mapsto=↦ uparrow=↑ downarrow=↓ perp=⊥ parallel=∥ mid=∣');
+  add('space', ',=\u2009 ;=\u2005 :=\u2005 >=\u2005 quad=\u2003 qquad=\u2003\u2003 !=');
+  'sin cos tan cot arcsin arccos arctan sinh cosh tanh log ln lg exp lim max min sup inf det arg dim deg gcd mod'.split(' ').forEach(k => o[k] = { t: k, type: 'op' });
+  'left right big Big bigg Bigg displaystyle textstyle limits nolimits'.split(' ').forEach(k => o[k] = { t: '', type: 'skip' });
+  return o;
+})();
+const ACCENT = { bar: '\u0304', overline: '\u0305', hat: '\u0302', widehat: '\u0302', tilde: '\u0303', widetilde: '\u0303', dot: '\u0307', ddot: '\u0308', vec: '\u20D7' };
+const FRAC = { '1/2': '½', '1/3': '⅓', '2/3': '⅔', '1/4': '¼', '3/4': '¾', '1/5': '⅕', '1/8': '⅛' };
+const BIN_CH = '+±∓×·÷∘∪∩∧∨⊕⊗∖', REL_CH = '=<>≤≥≠≈∼≃≅≡∝≪≫∈∉∋⊂⊆⊃⊇→←↔⇒⇐⇔↦↑↓⊥∥∣:';
+function mathSegs(src, b) {
+  const out = [];
+  let k = 0, last = 'open';   // letztes Element: open | ord | bin | rel – für die Abstände um Operatoren
+  const emit = (t, o = {}) => { if (t) out.push({ t, b: !!(b || o.b), i: !!o.i, c: false, v: 0, s: false }); };
+  const group = () => {        // Argument: {…} oder ein einzelnes Zeichen/Kommando
+    while (src[k] === ' ') k++;
+    if (src[k] === '{') {
+      const s = k; let d = 0;
+      for (; k < src.length; k++) { if (src[k] === '\\') { k++; continue; } if (src[k] === '{') d++; else if (src[k] === '}' && !--d) break; }
+      return src.slice(s + 1, k++);
+    }
+    if (src[k] === '\\') { const m = /^\\([a-zA-Z]+|.)/.exec(src.slice(k)); k += m[0].length; return m[0]; }
+    return src[k++] || '';
+  };
+  const sub = (s, v, o = {}) => mathSegs(s, b || o.b).map(sg => ({ ...sg, v: v || sg.v, i: o.up ? false : sg.i }));
+  const plain = segs => segs.map(sg => sg.t).join('');
+  const paren = segs => [{ ...segs[0], t: '(', i: false }, ...segs, { ...segs[0], t: ')', i: false }];
+  const sym = (t, type, o) => {
+    if (type === 'bin' && last !== 'ord') type = 'ord';   // unäres Minus/Plus ohne Abstand
+    const gap = type === 'rel' ? '\u2005' : type === 'bin' ? '\u2009' : '';
+    if (gap && out.length) emit(gap);
+    emit(t, o); emit(gap);
+    last = type;
+  };
+  while (k < src.length) {
+    const ch = src[k];
+    if (ch === ' ') { k++; continue; }
+    if (ch === '^' || ch === '_') {
+      k++;
+      const g = group();
+      if (ch === '^' && /^\s*(\\circ|\\degree|°)\s*$/.test(g)) emit('°');   // 20^\circ → 20°
+      else out.push(...sub(g, ch === '^' ? 1 : -1));
+      last = 'ord'; continue;
+    }
+    if (ch === '{') { out.push(...sub(group(), 0)); last = 'ord'; continue; }
+    if (ch === '}') { k++; continue; }
+    if (ch === '\\') {
+      const m = /^\\([a-zA-Z]+|.)/.exec(src.slice(k)); k += m[0].length;
+      const cmd = m[1];
+      if (/^(text|textrm|textup|mathrm|operatorname|mbox|mathsf|textsf)$/.test(cmd)) { emit(group().replace(/\\(.)/g, '$1').replace(/ /g, '\u00a0')); last = 'ord'; continue; }
+      if (/^(textbf|mathbf|boldsymbol|bm)$/.test(cmd)) { out.push(...sub(group(), 0, { b: true, up: /bf$/.test(cmd) })); last = 'ord'; continue; }
+      if (/^(textit|mathit|mathcal|mathbb|mathfrak|emph)$/.test(cmd)) { out.push(...sub(group(), 0)); last = 'ord'; continue; }
+      if (ACCENT[cmd]) {
+        const segs = sub(group(), 0);
+        if (segs.length) {
+          const one = [...plain(segs)].length === 1, mark = !one && (cmd === 'bar' || cmd === 'overline') ? '\u0305' : ACCENT[cmd];
+          if (one || mark === '\u0305') segs.forEach(sg => { sg.t = [...sg.t].map(c => c + mark).join(''); });
+          else segs[segs.length - 1].t += mark;
+          out.push(...segs);
+        }
+        last = 'ord'; continue;
+      }
+      if (cmd === 'frac' || cmd === 'dfrac' || cmd === 'tfrac') {
+        const a = sub(group(), 0), d = sub(group(), 0), f = FRAC[plain(a) + '/' + plain(d)];
+        const wrap = segs => segs.length && /[\s+−±=]/.test(plain(segs)) ? paren(segs) : segs;
+        if (f) emit(f); else out.push(...wrap(a), { t: '/', b: !!b, i: false, c: false, v: 0, s: false }, ...wrap(d));
+        last = 'ord'; continue;
+      }
+      if (cmd === 'sqrt') {
+        let idx = '';
+        if (src[k] === '[') { const e = src.indexOf(']', k); if (e > k) { idx = src.slice(k + 1, e); k = e + 1; } }
+        const segs = sub(group(), 0), root = idx === '3' ? '∛' : idx === '4' ? '∜' : '√';
+        if (idx && root === '√') out.push(...sub(idx, 1));
+        emit(root);
+        out.push(...([...plain(segs)].length > 1 ? paren(segs) : segs));
+        last = 'ord'; continue;
+      }
+      if (cmd === ' ') { emit('\u00a0'); continue; }
+      const s = MATH_SYM[cmd];
+      if (!s) { emit('\\' + cmd); last = 'ord'; continue; }
+      if (s.type === 'skip') continue;
+      if (s.type === 'space') { emit(s.t); continue; }
+      if (s.type === 'op') { if (last === 'ord') emit('\u2009'); emit(s.t); emit('\u2009'); last = 'open'; continue; }
+      sym(s.t, s.type === 'greek' ? 'ord' : s.type, { i: s.type === 'greek' });
+      continue;
+    }
+    k++;
+    if (ch === '-' || ch === '−') sym('−', 'bin');
+    else if (ch === '*') sym('∗', 'bin');
+    else if (ch === "'") emit('′');
+    else if (BIN_CH.includes(ch)) sym(ch, 'bin');
+    else if (REL_CH.includes(ch)) sym(ch, 'rel');
+    else if (ch === ',' || ch === ';') { emit(ch); if (k < src.length && !/\d/.test(src[k])) emit('\u2009'); last = 'open'; }
+    else if ('(['.includes(ch)) { emit(ch); last = 'open'; }
+    else sym(ch, 'ord', { i: /[A-Za-z]/.test(ch) });   // Variablen kursiv wie in LaTeX, Ziffern aufrecht
+  }
+  // Gleich formatierte Nachbarn zusammenfassen
+  return out.reduce((a, sg) => {
+    const p = a[a.length - 1];
+    if (p && p.b === sg.b && p.i === sg.i && p.v === sg.v) p.t += sg.t; else a.push({ ...sg });
+    return a;
+  }, []);
+}
+
 function parseInline(str) {
-  str = str.replace(/&(amp|lt|gt|nbsp|quot);/g, m => ENT[m]);
+  str = decodeEnt(str);
   const alnum = /[\p{L}\p{N}]/u;
+  let mid = 0;
   return str.split(/<br\s*\/?>|\n/i).map(line => {
-    const segs = []; let b = false, it = false, buf = '';
-    const push = () => { if (buf) { segs.push({ t: buf, b, i: it, c: false }); buf = ''; } };
+    const segs = []; let b = false, it = false, v = 0, st = false, buf = '';
+    const push = () => { if (buf) { segs.push({ t: buf, b, i: it, c: false, v, s: st }); buf = ''; } };
     for (let k = 0; k < line.length; k++) {
       const ch = line[k], prev = line[k - 1] || ' ', next = line[k + 1] || ' ';
-      if (ch === '\\' && /[\\`*_|#\[\]]/.test(next)) { buf += next; k++; continue; }
-      if (ch === '`') { const e = line.indexOf('`', k + 1); if (e > k) { push(); segs.push({ t: line.slice(k + 1, e), b, i: it, c: true }); k = e; continue; } }
+      if (ch === '\\' && /[\\`*_|#\[\]$~]/.test(next)) { buf += next; k++; continue; }
+      if (ch === '`') { const e = line.indexOf('`', k + 1); if (e > k) { push(); segs.push({ t: line.slice(k + 1, e), b, i: it, c: true, v, s: st }); k = e; continue; } }
+      if (ch === '$' && next !== ' ' && next !== '$') {
+        // Formel bis zum nächsten $, das nicht nach einem Leerzeichen und nicht vor einer Ziffer steht (5 $ und 10 $ bleibt Text)
+        let e = k + 1;
+        for (; e < line.length; e++) { if (line[e] === '\\') { e++; continue; } if (line[e] === '$' && line[e - 1] !== ' ' && !/\d/.test(line[e + 1] || '')) break; }
+        if (e < line.length) {
+          push(); mid++;
+          const m = line.slice(k + 1, e);
+          mathSegs(m, b).forEach(sg => segs.push({ ...sg, v: sg.v || v, s: st, m, mid }));
+          k = e; continue;
+        }
+      }
+      const tag = ch === '<' && /^<(\/?)(sup|sub|s|del)>/i.exec(line.slice(k));
+      if (tag) {
+        push();
+        const on = !tag[1], n = tag[2].toLowerCase();
+        if (n === 'sup') v = on ? 1 : 0; else if (n === 'sub') v = on ? -1 : 0; else st = on;
+        k += tag[0].length - 1; continue;
+      }
+      if (ch === '~' && next === '~') { push(); st = !st; k++; continue; }
       if ((ch === '*' || ch === '_') && next === ch) {
         const after = line[k + 2] || ' ';
         if (ch === '*' || (b ? !alnum.test(after) : !alnum.test(prev))) { push(); b = !b; k++; continue; }
@@ -435,6 +574,8 @@ function inlineHTML(str) {
   return parseInline(str).map(segs => segs.map(sg => {
     let s = esc(sg.t);
     if (sg.c) s = `<span style="font-family:Consolas,'Courier New',monospace">${s}</span>`;
+    if (sg.v) s = sg.v > 0 ? `<sup>${s}</sup>` : `<sub>${s}</sub>`;
+    if (sg.s) s = `<s>${s}</s>`;
     if (sg.i) s = `<i>${s}</i>`;
     if (sg.b) s = `<b>${s}</b>`;
     return s;
@@ -506,12 +647,17 @@ function tokenize(lines, pt, forceB, forceI) {
   return lines.map(segs => {
     const toks = [];
     for (const sg of segs) {
-      const font = fontObj({ b: sg.b || forceB, i: sg.i || forceI, c: sg.c }, pt);
+      // Hoch-/Tiefstellung: 70 % Größe, Grundlinie relativ zur normalen Schrift versetzt
+      const st = { b: sg.b || forceB, i: sg.i || forceI, c: sg.c };
+      const base = fontObj(st, pt), font = sg.v ? fontObj(st, pt * 0.7) : base;
+      const dy = sg.v > 0 ? -0.36 * base.px : sg.v < 0 ? 0.2 * base.px : 0;
       mctx.font = font.css;
-      for (const p of sg.t.split(/(\s+)/)) {
+      for (const p of sg.t.split(/([ \t\r\n]+)/)) {
         if (!p) continue;
         const sp = /^[ \t\r\n]+$/.test(p), t = sp ? ' ' : p;
-        toks.push({ t, font, sp, w: mctx.measureText(t).width });
+        // g: hängt ohne Leerzeichen am vorigen Token (z. B. x und ²) und darf nicht abgetrennt werden
+        const g = !sp && toks.length > 0 && !toks[toks.length - 1].sp;
+        toks.push({ t, font, base, dy, s: sg.s, sp, g, w: mctx.measureText(t).width });
       }
     }
     return toks;
@@ -523,7 +669,14 @@ function wrapLines(tl, maxW) {
     let line = [], lw = 0;
     const flush = () => { while (line.length && line[line.length - 1].sp) lw -= line.pop().w; out.push({ toks: line, w: lw }); line = []; lw = 0; };
     for (const t of toks) {
-      if (!t.sp && line.length && lw + t.w > maxW + 0.01) flush();
+      if (!t.sp && line.length && lw + t.w > maxW + 0.01) {
+        if (!t.g) flush();
+        else {
+          // Zusammenhängendes Wort ab dem letzten Leerzeichen in die nächste Zeile mitnehmen
+          let k = line.length; while (k > 0 && !line[k - 1].sp) k--;
+          if (k > 0) { const rest = line.splice(k); rest.forEach(r => lw -= r.w); flush(); rest.forEach(r => { line.push(r); lw += r.w; }); }
+        }
+      }
       if (t.sp && !line.length) continue;
       line.push(t); lw += t.w;
     }
@@ -667,7 +820,12 @@ function paintLines(P, lines, x0, cw, ty, lh, align, color) {
   lines.forEach((ln, k) => {
     let lx = align === 'right' ? x0 + cw - ln.w : align === 'center' ? x0 + (cw - ln.w) / 2 : x0;
     const cy = ty + lh * (k + 0.5);
-    for (const t of ln.toks) { if (!t.sp) P.text(t.t, lx, cy + baselineOff(t.font), t.font, color); lx += t.w; }
+    for (const t of ln.toks) {
+      const y = cy + baselineOff(t.base) + t.dy;
+      if (!t.sp) P.text(t.t, lx, y, t.font, color);
+      if (t.s) { const sy = y - 0.3 * t.font.px; P.line([[lx, sy], [lx + t.w, sy]], Math.max(0.6, t.font.px / 15), color, 'butt'); }
+      lx += t.w;
+    }
   });
 }
 function paint(P) {
@@ -1291,9 +1449,13 @@ const TEX_ESC = {
 };
 const texEsc = s => s.replace(/[\\&%$#_{}~^<>| −]/g, ch => TEX_ESC[ch]);
 function texInline(str, br) {
-  return parseInline(str).map(segs => segs.map(sg => {
+  return parseInline(str).map(segs => segs.map((sg, k) => {
+    // Formeln unverändert als $…$ übernehmen, jede nur einmal
+    if (sg.m != null) return k && segs[k - 1].mid === sg.mid ? '' : `$${sg.m}$`;
     let s = texEsc(sg.t);
     if (sg.c) s = `\\texttt{${s}}`;
+    if (sg.v) s = sg.v > 0 ? `\\textsuperscript{${s}}` : `\\textsubscript{${s}}`;
+    if (sg.s) s = `\\sout{${s}}`;
     if (sg.i) s = `\\textit{${s}}`;
     if (sg.b) s = `\\textbf{${s}}`;
     return s;
@@ -1419,12 +1581,13 @@ function buildLatex() {
     note = [`\\par\\vspace{${pt(S.noteGap)}pt}`, `{${sz}${ra} ${t}\\par}`];
   }
 
+  if ([...rowLines, cap, ...note].some(s => s.includes('\\sout{'))) pkgs.add('ulem');
   const out = ['% Erzeugt mit Tabellen-Designer'];
-  const order = ['array', 'booktabs', 'makecell', 'xcolor', 'fontspec'];
+  const order = ['array', 'booktabs', 'makecell', 'xcolor', 'ulem', 'fontspec'];
   const used = order.filter(p => pkgs.has(p));
   if (used.length) {
     out.push('% Benötigte Pakete in der Präambel:');
-    used.forEach(p => out.push(p === 'xcolor' ? '%   \\usepackage[table]{xcolor}' : `%   \\usepackage{${p}}`));
+    used.forEach(p => out.push(p === 'xcolor' ? '%   \\usepackage[table]{xcolor}' : p === 'ulem' ? '%   \\usepackage[normalem]{ulem}' : `%   \\usepackage{${p}}`));
     if (pkgs.has('fontspec')) out.push('% fontspec: Dokument mit XeLaTeX oder LuaLaTeX übersetzen.');
   }
   if (strokes.length) out.push('% Hinweis: Freihand-Zeichnungen und gezeichnete Linien sind nicht enthalten.');
