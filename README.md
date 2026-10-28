@@ -10,15 +10,17 @@ Der Tabellen-Designer ist eine einzelne HTML-Datei ohne Abhängigkeiten. Er läu
 
 ## Funktionen
 
-- **Eingabe:** Markdown-Tabellen, aus Excel kopierte Zellen (Tabulator-getrennt), `.md`/`.csv`/`.tsv`/`.txt`-Dateien per Öffnen-Dialog oder Drag & Drop
+- **Eingabe:** Markdown-Tabellen, CSV (Trennzeichen `;`, `,` oder Tabulator werden erkannt), aus Excel kopierte Zellen, `.md`/`.csv`/`.tsv`/`.txt`-Dateien per Öffnen-Dialog oder Drag & Drop
 - **Formatierung und Formeln in Zellen:** `**fett**`, `*kursiv*`, `~~durchgestrichen~~`, `` `code` ``, `<br>`, `<sup>`/`<sub>`, HTML-Entities wie `&alpha;`. Einfache LaTeX-Formeln in `$…$` werden mit Hoch- und Tiefstellung dargestellt, z. B. `$R^2$`, `$\alpha = 0{,}05$`, `$\bar{x} \pm SD$`, `$m/s^2$`, `$\Delta T \leq 5\,K$`, `$20^\circ C$`. Unterstützt werden griechische Buchstaben, gängige Operatoren und Relationen, `\frac`, `\sqrt`, `\text`, `\bar`/`\hat`/`\vec`. Beim LaTeX-Export bleiben Formeln unverändert als `$…$` erhalten. Brüche erscheinen in einer Zeile als `a/b`. Ein Dollarzeichen als Text schreibt man als `\$`
-- **Daten:** sortieren, Zahlen runden, Zeilen und Spalten tauschen, Spalten ausblenden
+- **Daten:** sortieren, Zahlen runden, Zeilen und Spalten tauschen, Spalten ausblenden. Für große Tabellen lässt sich die Anzeige auf die ersten n Zeilen begrenzen (Vorschau); alle Exporte enthalten trotzdem die ganze Tabelle
+- **Projekte:** Tabelle, Stil, Datenansicht, Spaltenbreiten und Zeichnungen als `.tabelle`-Datei speichern und wieder öffnen (Strg+S, Strg+Umschalt+S, Strg+O). In Edge/Chrome speichert Strg+S direkt in dieselbe Datei
 - **Gestaltung:** Schrift, Ausrichtung, Spaltenbreiten und Zeilenhöhen, Linien, Farben, Zebrastreifen, Beschriftung und Fußnote
 - **Stile:** Vorlagen, eigene Stile im Browser oder in einem Ordner speichern, als JSON exportieren/importieren
 - **Export:**
   - als echte Tabelle für Word (Zwischenablage oder `.doc`)
   - als Bild (PNG kopieren/speichern, SVG, PDF über Drucken)
   - als LaTeX (`booktabs`, Farben) oder bereinigtes Markdown
+  - als CSV (Trennzeichen `;`/`,`/Tab, Dezimaltrennzeichen umstellbar, optional ohne Formatierung, UTF-8 mit BOM für Excel)
 
 ## Als App installieren (Microsoft Edge)
 
@@ -33,7 +35,7 @@ In Chrome funktioniert es genauso (Menü **⋮ → Streamen, speichern und teile
 
 ### Dateien aus dem Explorer öffnen
 
-Die installierte App meldet sich bei Windows als Programm für `.md`, `.markdown`, `.csv`, `.tsv` und `.txt` an:
+Die installierte App meldet sich bei Windows als Programm für `.md`, `.markdown`, `.csv`, `.tsv`, `.txt` und Projektdateien (`.tabelle`) an:
 im Explorer Rechtsklick auf die Datei → **Öffnen mit** → **Tabellen-Designer**. Beim ersten Mal fragt Edge einmalig, ob die App Dateien öffnen darf.
 
 ### Deinstallieren

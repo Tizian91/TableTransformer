@@ -22,7 +22,8 @@
         "text/markdown": [".md", ".markdown"],
         "text/csv": [".csv"],
         "text/tab-separated-values": [".tsv"],
-        "text/plain": [".txt"]
+        "text/plain": [".txt"],
+        "application/json": [".tabelle"]
       }
     }
   ]

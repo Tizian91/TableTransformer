@@ -23,6 +23,7 @@ body{margin:0;font:13px/1.4 "Segoe UI",system-ui,sans-serif;background:var(--bg)
 header{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap}
 header h1{font-size:15px;margin:0 12px 0 0}
 header .sp{flex:1}
+#projName{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 main{flex:1;display:flex;min-height:0}
 aside{width:360px;min-width:260px;max-width:75vw;flex:none;overflow:auto;background:var(--panel);padding:4px 12px 30px}
 #splitter{flex:none;width:6px;cursor:col-resize;background:var(--border);touch-action:none;transition:background .15s}
@@ -58,6 +59,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff;fo
 #wrap.checker{background:repeating-conic-gradient(#cfcfcf 0 25%,#fff 0 50%) 0 0/16px 16px}
 canvas{display:block;touch-action:none}
 #status{padding:4px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);background:var(--panel)}
+#status.cut{color:var(--accent)}
 #toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:6px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:10}
 #toast.show{opacity:.95}
 @media (max-width:820px){main{flex-direction:column}aside{width:auto!important;max-width:none;max-height:45vh;border-bottom:1px solid var(--border)}#splitter{display:none}}
@@ -65,8 +67,12 @@ canvas{display:block;touch-action:none}
 </head>
 <body>
 <header>
-  <h1>TableTransformer</h1>
-  <span class="hint">Markdown-Tabelle einfügen → gestalten → als Bild oder Word-Tabelle exportieren</span>
+  <h1 title="Markdown- oder CSV-Tabelle einfügen → gestalten → als Bild, Word-Tabelle, LaTeX, Markdown oder CSV exportieren">TableTransformer</h1>
+  <button id="btnProjOpen" title="Projektdatei öffnen (Strg+O)">Projekt öffnen…</button>
+  <button id="btnProjSave" title="Tabelle, Stil und Bearbeitung als Projektdatei speichern (Strg+S)">Projekt speichern</button>
+  <button id="btnProjSaveAs" title="Unter neuem Namen speichern (Strg+Umschalt+S)">Speichern unter…</button>
+  <span id="projName" class="hint"></span>
+  <input type="file" id="projFile" accept=".tabelle,.json" hidden>
   <span class="sp"></span>
   <button id="hWord" class="primary" title="Als echte Tabelle in Word einfügen (Strg+V)">Für Word kopieren</button>
   <button id="hCopy">Bild kopieren</button>
@@ -75,16 +81,16 @@ canvas{display:block;touch-action:none}
 <main>
 <aside>
   <details open>
-    <summary>Markdown</summary>
+    <summary>Markdown / CSV</summary>
     <textarea id="md" spellcheck="false" placeholder="| A | B |&#10;|---|:-:|&#10;| 1 | 2 |"></textarea>
     <div class="row">
-      <input type="file" id="file" accept=".md,.markdown,.txt,.csv,.tsv" hidden>
+      <input type="file" id="file" accept=".md,.markdown,.txt,.csv,.tsv,.tabelle" hidden>
       <button id="btnOpen">Datei öffnen…</button>
       <select id="tblSel" hidden></select>
       <span style="flex:1"></span>
     </div>
     <div class="row"><label><input type="checkbox" data-k="useHeader"> Erste Zeile ist Kopfzeile</label></div>
-    <p class="hint">Unterstützt **fett**, *kursiv*, ~~durchgestrichen~~, `code`, &lt;br&gt;, &lt;sup&gt;/&lt;sub&gt; und Ausrichtung per :---:. Formeln in $…$, z. B. $R^2$, $\alpha = 0{,}05$, $\bar{x} \pm SD$, $m/s^2$, $H_2O$, $20^\circ C$. Auch aus Excel kopierte Zellen (Tabulator-getrennt) funktionieren. Der Stil bleibt erhalten, wenn du eine neue Tabelle einfügst.</p>
+    <p class="hint">Unterstützt **fett**, *kursiv*, ~~durchgestrichen~~, `code`, &lt;br&gt;, &lt;sup&gt;/&lt;sub&gt; und Ausrichtung per :---:. Formeln in $…$, z. B. $R^2$, $\alpha = 0{,}05$, $\bar{x} \pm SD$, $m/s^2$, $H_2O$, $20^\circ C$. Auch CSV (Trennzeichen ; , oder Tabulator werden erkannt) und aus Excel kopierte Zellen funktionieren. Der Stil bleibt erhalten, wenn du eine neue Tabelle einfügst.</p>
   </details>
 
   <details open>
@@ -94,9 +100,10 @@ canvas{display:block;touch-action:none}
     <div class="row"><span>Zahlen runden</span>
       <select id="decimals"><option value="-1">unverändert</option><option value="0">0 Stellen</option><option value="1">1 Stelle</option><option value="2">2 Stellen</option><option value="3">3 Stellen</option><option value="4">4 Stellen</option></select></div>
     <div class="row"><label><input type="checkbox" id="transpose"> Zeilen und Spalten tauschen</label></div>
+    <div class="row"><label><input type="checkbox" data-k="prevOn"> Vorschau: nur die ersten</label><input type="number" data-k="prevN" min="1" max="1000" step="1"><span>Zeilen</span></div>
     <div class="hint">Sichtbare Spalten:</div>
     <div id="visCols" class="chk"></div>
-    <p class="hint">Der Markdown-Text wird dabei nicht verändert. Die geänderte Tabelle bekommst du unter „Word &amp; Markdown“.</p>
+    <p class="hint">Der Eingabetext wird dabei nicht verändert. Die geänderte Tabelle bekommst du unter „Word, Markdown &amp; CSV“. Die Vorschau begrenzt nur die Anzeige, alle Exporte enthalten die ganze Tabelle.</p>
   </details>
 
   <details open>
@@ -219,12 +226,17 @@ canvas{display:block;touch-action:none}
   </details>
 
   <details open>
-    <summary>Word &amp; Markdown</summary>
+    <summary>Word, Markdown &amp; CSV</summary>
     <div class="btns"><button id="btnWord" class="primary">Für Word kopieren</button><button id="btnDoc">Word-Datei (.doc) speichern</button></div>
     <div class="row"><label><input type="checkbox" data-k="wordCaption"> Beschriftung und Fußnote mitnehmen</label></div>
     <p class="hint">„Für Word kopieren“, dann in Word Strg+V drücken: Du bekommst eine echte, bearbeitbare Tabelle mit Schrift, Breiten, Linien und Farben. Freihand-Zeichnungen gehen nur ins Bild mit. Beim Öffnen der .doc-Datei warnt Word eventuell wegen des Formats; einfach mit „Ja“ bestätigen.</p>
     <div class="btns"><button id="btnMdCopy">Markdown kopieren</button><button id="btnMdSave">Markdown speichern (.md)</button><button id="btnMdApply" title="Ersetzt den Text im Markdown-Feld">Ins Eingabefeld übernehmen</button></div>
     <p class="hint">Gibt die Tabelle sauber ausgerichtet als Markdown aus, inklusive Sortierung, Rundung, Spaltenauswahl und Ausrichtung.</p>
+    <div class="row"><span>CSV-Trennzeichen</span><select data-k="csvSep"><option value=";">Semikolon ; (Excel, deutsch)</option><option value=",">Komma ,</option><option value="tab">Tabulator</option></select></div>
+    <div class="row"><span>Dezimaltrennzeichen</span><select data-k="csvDec"><option value="keep">unverändert</option><option value=",">Komma (1,5)</option><option value=".">Punkt (1.5)</option></select></div>
+    <div class="row"><label><input type="checkbox" data-k="csvPlain"> Formatierung entfernen (**fett**, $R^2$ → R²)</label></div>
+    <div class="btns"><button id="btnCsvCopy">CSV kopieren</button><button id="btnCsvSave">CSV speichern (.csv)</button></div>
+    <p class="hint">CSV mit Sortierung, Rundung, Spaltenauswahl und Tausch von Zeilen und Spalten. Die Datei ist UTF-8 mit BOM, damit Excel Umlaute richtig liest. Mit „Tabulator“ lässt sich die kopierte Tabelle direkt in Excel einfügen.</p>
   </details>
 
   <details open>
@@ -297,9 +309,10 @@ const DEF = {
   capText: '', capPos: 'top', capSize: 11, capBold: false, capItalic: false, capAlign: 'left', capGap: 6,
   noteText: '', noteSize: 9, noteItalic: false, noteAlign: 'left', noteGap: 4,
   wordCaption: true, exportScale: 3, fileName: 'tabelle', useHeader: true,
-  texEnv: 'table', texFont: 'size', texBooktabs: true, texColors: true, texLabel: ''
+  texEnv: 'table', texFont: 'size', texBooktabs: true, texColors: true, texLabel: '',
+  prevOn: false, prevN: 15, csvSep: ';', csvDec: 'keep', csvPlain: true
 };
-const NON_STYLE = ['fileName', 'useHeader', 'capText', 'noteText', 'texLabel'];
+const NON_STYLE = ['fileName', 'useHeader', 'capText', 'noteText', 'texLabel', 'prevOn', 'prevN', 'csvSep', 'csvDec', 'csvPlain'];
 
 const LINE_SETS = {
   all:   { hTop: true, hHeader: true, hInner: true, hBottom: true, vOuter: true, vInner: true },
@@ -370,15 +383,60 @@ function splitRow(line) {
 }
 const alignOf = a => { a = a.trim(); const l = a.startsWith(':'), r = a.endsWith(':'); return l && r ? 'center' : r ? 'right' : l ? 'left' : null; };
 
+// CSV mit Anführungszeichen und Zeilenumbrüchen in Zellen
+function parseCSV(text, d) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"' && !cell.trim()) { q = true; cell = ''; }
+    else if (ch === d) { row.push(cell.trim()); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell.trim()); rows.push(row); row = []; cell = '';
+    } else cell += ch;
+  }
+  if (cell.trim() || row.length) { row.push(cell.trim()); rows.push(row); }
+  return rows.filter(r => r.some(c => c !== ''));
+}
+// Trennzeichen: das mit der häufigsten gleichbleibenden Feldanzahl pro Zeile
+function detectDelim(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim()).slice(0, 50);
+  if (lines.length < 2) return null;
+  let best = null;
+  for (const d of ['\t', ';', ',']) {
+    const freq = new Map();
+    lines.forEach(l => { const c = (parseCSV(l, d)[0] || []).length; freq.set(c, (freq.get(c) || 0) + 1); });
+    const [mode, k] = [...freq].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] || [0, 0];
+    if (mode < 2) continue;
+    const score = k / lines.length;
+    if (score >= 0.6 && (!best || score > best.score + 1e-9)) best = { d, score };
+  }
+  return best ? best.d : null;
+}
+
 function parseAll(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const lines = text.split(/\r?\n/);
+  const res = [];
+  // CSV/TSV bzw. aus Excel kopierte Zellen, solange der Text nicht nach Markdown aussieht
+  // (Trennzeile |---| oder alle Zeilen beginnen mit |) – sonst würde eine Zelle wie „a|b“ als Markdown gelesen
+  const filled = lines.filter(l => l.trim());
+  if (!lines.some(l => l.includes('-') && SEP_RE.test(l)) && !filled.every(l => l.trim().startsWith('|'))) {
+    const d = detectDelim(text);
+    if (d) {
+      const all = parseCSV(text, d).map(r => r.map(c => c.replace(/\|/g, '\\|')));
+      if (all.length) res.push({ header: all[0], aligns: [], rows: all.slice(1) });
+    }
+  }
   const blocks = []; let blk = [];
-  for (const l of lines) {
+  for (const l of res.length ? [] : lines) {
     if (l.includes('|')) blk.push(l);
     else { if (blk.length) blocks.push(blk); blk = []; }
   }
   if (blk.length) blocks.push(blk);
-  const res = [];
   for (const b of blocks) {
     const si = b.findIndex(l => SEP_RE.test(l));
     let header = null, aligns = [], rows;
@@ -388,13 +446,6 @@ function parseAll(text) {
       rows = b.slice(si + 1).filter(l => !SEP_RE.test(l)).map(splitRow);
     } else rows = b.filter(l => !SEP_RE.test(l)).map(splitRow);
     if (header || rows.length) res.push({ header, aligns, rows });
-  }
-  if (!res.length) {
-    const tl = lines.filter(l => l.includes('\t'));
-    if (tl.length) {
-      const all = tl.map(l => l.split('\t').map(s => s.trim()));
-      res.push({ header: all[0], aligns: [], rows: all.slice(1) });
-    }
   }
   for (const t of res) {
     const n = Math.max(t.header ? t.header.length : 0, ...t.rows.map(r => r.length), 1);
@@ -604,10 +655,14 @@ function cmpCells(a, b) {
   return strip(a).localeCompare(strip(b), 'de', { numeric: true, sensitivity: 'base' });
 }
 const srcTable = () => tables[tIdx] || PLACEHOLDER;
-function viewTable() {
+function viewTable(full) {
   const src = srcTable(), n = src.n;
   let rows = src.rows.map(r => r.slice());
   if (D.sortCol >= 0 && D.sortCol < n) { const k = D.sortCol; rows.sort((a, b) => D.sortDir * cmpCells(a[k], b[k])); }
+  // Vorschau: nur die ersten n Datenzeilen anzeigen (nach dem Sortieren, vor dem Tauschen)
+  const total = rows.length;
+  if (!full && S.prevOn) rows = rows.slice(0, Math.max(1, Math.round(S.prevN) || DEF.prevN));
+  const shown = rows.length;
   if (D.decimals >= 0) { const sep = detectSep(src); rows = rows.map(r => r.map(s => roundCell(s, D.decimals, sep))); }
   let vis = []; for (let c = 0; c < n; c++) if (!D.hidden[c]) vis.push(c);
   if (!vis.length) vis = [0];
@@ -623,7 +678,7 @@ function viewTable() {
       aligns = all.map(() => null); keys = all.map((_, i) => 'r' + i);
     }
   }
-  return { header, aligns, rows, n: keys.length, keys };
+  return { header, aligns, rows, n: keys.length, keys, total, shown };
 }
 
 /* ---------- Schrift & Messung ---------- */
@@ -698,7 +753,7 @@ function resolveAlign(c, hdr) {
   return (a && a !== 'md') ? a : (V.aligns[c] || 'left');
 }
 function layout() {
-  V = viewTable();
+  V = viewTable(fullRows);
   const n = V.n, K = V.keys;
   const hasHdr = !!(S.useHeader && V.header);
   const rows = V.header ? [V.header, ...V.rows] : V.rows.slice();
@@ -887,6 +942,16 @@ function paintOverlay(c, scale) {
   c.stroke(); c.setLineDash([]);
 }
 
+// Exporte enthalten immer die ganze Tabelle, auch wenn die Anzeige auf die ersten Zeilen begrenzt ist
+let fullRows = false;
+function fullTable(fn) {
+  if (!S.prevOn) return fn();
+  const keep = [L, G, V];
+  fullRows = true;
+  try { L = layout(); G = geometry(L); return fn(); }
+  finally { fullRows = false; [L, G, V] = keep; }
+}
+
 let rafPending = false;
 function render() {
   if (rafPending) return;
@@ -905,7 +970,10 @@ function renderNow() {
   updateColInputs();
   const mm = v => Math.round(v * 25.4 / 96);
   const es = +S.exportScale;
-  $('#status').textContent = (tables.length ? '' : 'Keine Markdown-Tabelle gefunden · ') +
+  const cut = V.shown < V.total;
+  $('#status').classList.toggle('cut', cut);
+  $('#status').textContent = (tables.length ? '' : 'Keine Tabelle gefunden · ') +
+    (cut ? `Vorschau: erste ${V.shown} von ${V.total} Zeilen (Exporte enthalten alle) · ` : '') +
     `Tabelle ${Math.round(L.W)} × ${Math.round(L.H)} px (${mm(L.W)} × ${mm(L.H)} mm) · Bild ${G.cw} × ${G.ch} px (${mm(G.cw)} × ${mm(G.ch)} mm) · ` +
     `PNG ${Math.round(G.cw * es)} × ${Math.round(G.ch * es)} px bei ${Math.round(96 * es)} dpi · ${L.n} Spalten, ${L.R} Zeilen`;
   if ($('#texPrevBox').open) $('#texPrev').value = buildLatex();
@@ -1003,7 +1071,10 @@ $('#md').addEventListener('input', () => { parseMd(); render(); });
 $('#tblSel').addEventListener('change', e => { tIdx = +e.target.value; T = freshT(); D = freshD(); buildDataPanel(); ensureView(); render(); });
 $('#btnOpen').onclick = () => $('#file').click();
 $('#file').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
-function loadFile(f) { f.text().then(t => { $('#md').value = t; tIdx = 0; parseMd(); render(); toast(`${f.name} geladen`); }); }
+function loadFile(f, handle) {
+  if (/\.(tabelle|json)$/i.test(f.name)) { openProjectFile(f, handle); return; }
+  f.text().then(t => { $('#md').value = t; tIdx = 0; parseMd(); render(); toast(`${f.name} geladen`); });
+}
 ['dragover', 'drop'].forEach(ev => document.addEventListener(ev, e => {
   if (!e.dataTransfer || ![...e.dataTransfer.types].includes('Files')) return;
   e.preventDefault();
@@ -1142,6 +1213,7 @@ $('#btnDirSave').onclick = async () => {
 $('#btnReset').onclick = () => {
   if (!confirm('Alle Einstellungen, Spaltenbreiten und Zeichnungen zurücksetzen?')) return;
   S = { ...DEF }; strokes = []; hist = []; T = freshT(); D = freshD();
+  projName = ''; projHandle = null; projSnap = '';
   parseMd(); syncUI(); render();
 };
 
@@ -1159,7 +1231,11 @@ function undo() { if (!hist.length) return; const h = JSON.parse(hist.pop()); st
 $('#btnUndo').onclick = undo;
 $('#btnClearStrokes').onclick = () => { if (strokes.length) { pushHist(); strokes = []; render(); } };
 document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !/TEXTAREA|INPUT/.test(document.activeElement.tagName)) { e.preventDefault(); undo(); }
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !/TEXTAREA|INPUT/.test(document.activeElement.tagName)) { e.preventDefault(); undo(); }
+  else if (k === 's') { e.preventDefault(); saveProject(e.shiftKey); }
+  else if (k === 'o') { e.preventDefault(); openProject(); }
 });
 
 function toLocal(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / zoom - G.ox, y: (e.clientY - r.top) / zoom - G.oy }; }
@@ -1280,10 +1356,12 @@ cv.addEventListener('dblclick', e => {
 /* ---------- Bild-Export: PNG, SVG, PDF ---------- */
 function exportCanvas() {
   renderNow();
-  const sc = +S.exportScale || 1, c = document.createElement('canvas');
-  c.width = Math.round(G.cw * sc); c.height = Math.round(G.ch * sc);
-  paint(canvasPainter(c.getContext('2d'), sc));
-  return c;
+  return fullTable(() => {
+    const sc = +S.exportScale || 1, c = document.createElement('canvas');
+    c.width = Math.round(G.cw * sc); c.height = Math.round(G.ch * sc);
+    paint(canvasPainter(c.getContext('2d'), sc));
+    return c;
+  });
 }
 const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 function crc32(bytes) { let c = 0xffffffff; for (const b of bytes) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
@@ -1305,9 +1383,11 @@ async function pngBlob() {
 }
 function buildSVG() {
   renderNow();
-  const P = svgPainter(); paint(P);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${f2(G.cw * 0.75)}pt" height="${f2(G.ch * 0.75)}pt" viewBox="0 0 ${G.cw} ${G.ch}">` +
-    (P.defs.length ? `<defs>${P.defs.join('')}</defs>` : '') + P.out.join('') + '</svg>';
+  return fullTable(() => {
+    const P = svgPainter(); paint(P);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${f2(G.cw * 0.75)}pt" height="${f2(G.ch * 0.75)}pt" viewBox="0 0 ${G.cw} ${G.ch}">` +
+      (P.defs.length ? `<defs>${P.defs.join('')}</defs>` : '') + P.out.join('') + '</svg>';
+  });
 }
 function download(blob, name) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
@@ -1320,8 +1400,8 @@ async function copyPng() {
 }
 function saveSvg() { download(new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + buildSVG()], { type: 'image/svg+xml' }), safeName() + '.svg'); }
 function printPdf() {
-  const svg = buildSVG();
-  const wmm = f2(G.cw * 25.4 / 96), hmm = f2(G.ch * 25.4 / 96);
+  const svg = buildSVG(), [cw, ch] = fullTable(() => [G.cw, G.ch]);
+  const wmm = f2(cw * 25.4 / 96), hmm = f2(ch * 25.4 / 96);
   const w = window.open('', '_blank');
   if (!w) { toast('Popup wurde blockiert – bitte Popups erlauben'); return; }
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(safeName())}</title><style>@page{size:${wmm}mm ${hmm}mm;margin:0}html,body{margin:0;padding:0}svg{display:block;width:${wmm}mm;height:${hmm}mm}</style></head><body>${svg}</body></html>`);
@@ -1334,8 +1414,8 @@ $('#btnSvg').onclick = saveSvg;
 $('#btnPdf').onclick = printPdf;
 
 /* ---------- Word & Markdown ---------- */
-function buildHTML() {
-  renderNow();
+function buildHTML() { renderNow(); return fullTable(htmlTable); }
+function htmlTable() {
   const fam = famCSS().replace(/"/g, "'");
   const bd = w => w > 0 ? `solid ${S.lineColor} ${ptStr(w)}` : 'none';
   const fixedW = S.widthMode === 'fixed' || V.keys.some(k => T.cw[k] != null);
@@ -1372,8 +1452,8 @@ function buildHTML() {
   if (S.wordCaption && S.noteText.trim()) s += para(S.noteText, S.noteSize, false, S.noteItalic, S.noteAlign, `${ptStr(S.noteGap)} 0 0 0`);
   return s;
 }
-function buildMarkdown() {
-  renderNow();
+function buildMarkdown() { renderNow(); return fullTable(mdTable); }
+function mdTable() {
   const rows = V.header ? [V.header, ...V.rows] : [Array(V.n).fill(''), ...V.rows];
   const al = V.keys.map((k, c) => { const a = T.ca[k]; return (a && a !== 'md') ? a : V.aligns[c]; });
   const len = s => [...s].length;
@@ -1430,11 +1510,34 @@ $('#btnWord').onclick = $('#hWord').onclick = copyForWord;
 $('#btnDoc').onclick = saveDoc;
 $('#btnMdCopy').onclick = () => copyText(buildMarkdown(), 'Markdown kopiert');
 $('#btnMdSave').onclick = () => download(new Blob([buildMarkdown() + '\n'], { type: 'text/markdown' }), safeName() + '.md');
+
+/* ---------- CSV ---------- */
+const zipMap = (a, b) => Object.fromEntries([...a].map((c, i) => [c, [...b][i]]));
+const SUP_MAP = zipMap('0123456789+-−=()ni', '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁻⁼⁽⁾ⁿⁱ'), SUB_MAP = zipMap('0123456789+-−=()', '₀₁₂₃₄₅₆₇₈₉₊₋₋₌₍₎');
+// Zelle als reiner Text: Formatierung weg, Hoch-/Tiefstellung als Unicode-Zeichen (sonst x^(…) bzw. x_(…))
+function plainText(s) {
+  return parseInline(s).map(segs => segs.map(sg => {
+    if (!sg.v) return sg.t;
+    const map = sg.v > 0 ? SUP_MAP : SUB_MAP, ch = [...sg.t];
+    return ch.every(c => map[c]) ? ch.map(c => map[c]).join('') : (sg.v > 0 ? '^' : '_') + (ch.length > 1 ? `(${sg.t})` : sg.t);
+  }).join('')).join(' ').replace(/[^\S\r\n]+/g, ' ').trim();
+}
+function buildCSV() {
+  const v = viewTable(true), sep = S.csvSep === 'tab' ? '\t' : S.csvSep;
+  const cell = s => {
+    s = S.csvPlain ? plainText(s) : s.replace(/\\\|/g, '|');
+    if (S.csvDec !== 'keep' && numVal(s)) s = s.replace(/^([-+−]?\d+)[.,](\d)/, `$1${S.csvDec}$2`).replace(/^−/, '-');
+    return /["\r\n]/.test(s) || s.includes(sep) || s !== s.trim() ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return (v.header ? [v.header, ...v.rows] : v.rows).map(r => r.map(cell).join(sep)).join('\r\n');
+}
+$('#btnCsvCopy').onclick = () => copyText(buildCSV(), 'CSV kopiert');
+$('#btnCsvSave').onclick = () => download(new Blob([String.fromCharCode(0xFEFF) + buildCSV() + '\r\n'], { type: 'text/csv;charset=utf-8' }), safeName() + '.csv');
 $('#btnMdApply').onclick = () => {
   if (!confirm('Den Text im Markdown-Feld durch die bearbeitete Tabelle ersetzen? Sortierung, Rundung und Spaltenauswahl werden dabei fest übernommen.')) return;
   renderNow();
   const keepCw = {}, keepCa = {};
-  V.keys.forEach((k, c) => { if (T.cw[k] != null) keepCw['c' + c] = T.cw[k]; if (T.ca[k]) keepCa['c' + c] = T.ca[k]; });
+  fullTable(() => V.keys.forEach((k, c) => { if (T.cw[k] != null) keepCw['c' + c] = T.cw[k]; if (T.ca[k]) keepCa['c' + c] = T.ca[k]; }));
   const md = buildMarkdown().split('\n\n').find(b => b.trim().startsWith('|'));
   $('#md').value = md; tables = []; tIdx = 0; D = freshD();
   parseMd(); T.cw = keepCw; T.ca = keepCa; T.rh = []; ensureView(); render();
@@ -1465,7 +1568,8 @@ const hexOf = c => c.replace('#', '').toUpperCase();
 const rgbOf = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
 const isBlackish = c => Math.max(...rgbOf(c)) <= 0x30;
 const isWhitish = c => Math.min(...rgbOf(c)) >= 0xfc;
-function buildLatex() {
+function buildLatex() { return fullTable(latexTable); }
+function latexTable() {
   const n = L.n, R = L.R, pkgs = new Set();
   const pt = px => f2(px * 0.75);
   const same = (a, b) => Math.abs(a - b) < 0.01;
@@ -1616,17 +1720,19 @@ let saveTimer = null;
 function saveSoon() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    try { localStorage.setItem(STORE, JSON.stringify({ S, md: $('#md').value, T, D, strokes, tIdx, srcN: srcTable().n })); } catch { }
+    updateProjUI();
+    try { localStorage.setItem(STORE, JSON.stringify({ ...stateObj(), projName, projClean: !!projName && !projDirty })); } catch { }
   }, 400);
 }
-function restore() {
-  let st = null; try { st = JSON.parse(localStorage.getItem(STORE)); } catch { }
+// Gespeicherten Zustand übernehmen (Browser-Speicher oder Projektdatei), Werte gegen die Standards geprüft
+function applyState(st) {
   $('#md').value = st && typeof st.md === 'string' ? st.md : SAMPLE;
+  S = { ...DEF }; T = freshT(); D = freshD(); strokes = []; hist = [];
   if (st && st.S) {
-    S = { ...DEF, ...sanitizeStyle(st.S) };
+    Object.assign(S, sanitizeStyle(st.S));
     NON_STYLE.forEach(k => { if (typeof st.S[k] === typeof DEF[k]) S[k] = st.S[k]; });
   }
-  tIdx = (st && st.tIdx) || 0;
+  tIdx = (st && +st.tIdx) || 0;
   parseMd();
   if (st && st.srcN === srcTable().n) {
     if (st.T && st.T.cw) T = { ...freshT(), ...st.T };
@@ -1634,6 +1740,88 @@ function restore() {
     buildDataPanel(); ensureView();
   }
   if (st && Array.isArray(st.strokes)) strokes = st.strokes;
+}
+function restore() {
+  let st = null; try { st = JSON.parse(localStorage.getItem(STORE)); } catch { }
+  applyState(st);
+  return st;
+}
+
+/* ---------- Projekte: Tabelle, Stil und Bearbeitung in einer Datei speichern und wieder öffnen ---------- */
+const APP = 'TableTransformer', APP_TITLE = document.title, PROJ_EXT = '.tabelle';
+const PROJ_TYPES = [{ description: 'TableTransformer-Projekt', accept: { 'application/json': [PROJ_EXT, '.json'] } }];
+let projName = '', projHandle = null, projSnap = '', projDirty = false;
+const stateObj = () => ({ S, md: $('#md').value, T, D, strokes, tIdx, srcN: srcTable().n });
+const stateStr = () => JSON.stringify(stateObj());
+const isProject = o => !!o && typeof o === 'object' && o.app === APP && typeof o.md === 'string';
+const projectJSON = () => JSON.stringify({ app: APP, format: 1, saved: new Date().toISOString(), ...stateObj() }, null, 1);
+// Projektname aus dem Dateinamen; der Export-Dateiname folgt, solange er nicht selbst geändert wurde
+function setProjName(file) {
+  const name = String(file || '').replace(/\.(tabelle|json)$/i, '').trim();
+  if (name && (!S.fileName || S.fileName === DEF.fileName || S.fileName === projName)) S.fileName = name;
+  projName = name;
+  syncUI();
+}
+function updateProjUI() {
+  projDirty = !!projName && stateStr() !== projSnap;
+  const el = $('#projName');
+  el.textContent = projName ? projName + (projDirty ? ' •' : '') : 'nicht als Projekt gespeichert';
+  el.title = projName ? (projDirty ? 'Ungespeicherte Änderungen – Strg+S speichert' : 'Alle Änderungen gespeichert') : 'Strg+S speichert alles als Projektdatei';
+  document.title = (projName ? projName + (projDirty ? ' •' : '') + ' – ' : '') + APP_TITLE;
+}
+function loadProject(o, file, handle) {
+  applyState(o);
+  projName = ''; projHandle = handle || null;
+  setProjName(file);
+  syncUI(); renderNow();
+  projSnap = stateStr(); updateProjUI();
+  if (projHandle) idb.set('projHandle', projHandle).catch(() => { });
+}
+// Eine .tabelle-/.json-Datei öffnen: Projekt laden, sonst als Stil übernehmen
+async function openProjectFile(f, handle) {
+  let o = null; try { o = JSON.parse(await f.text()); } catch { }
+  if (isProject(o)) {
+    if (projDirty && !confirm(`Ungespeicherte Änderungen an „${projName}“ verwerfen?`)) return;
+    loadProject(o, f.name, handle);
+    toast(`Projekt „${projName}“ geöffnet`);
+  } else if (o && Object.keys(sanitizeStyle(o)).length) { applyStyle(o); toast('Stil übernommen'); }
+  else toast(`${f.name} ist keine Projektdatei des TableTransformers`);
+}
+async function openProject() {
+  if (!('showOpenFilePicker' in window)) { $('#projFile').click(); return; }
+  try { const [h] = await window.showOpenFilePicker({ id: 'tabellenProjekte', types: PROJ_TYPES }); await openProjectFile(await h.getFile(), h); }
+  catch (e) { if (e.name !== 'AbortError') { console.error(e); toast('Projekt konnte nicht geöffnet werden'); } }
+}
+async function saveProject(as) {
+  if ('showSaveFilePicker' in window) {
+    try {
+      if (!projHandle || as) projHandle = await window.showSaveFilePicker({ id: 'tabellenProjekte', suggestedName: (projName || safeName()) + PROJ_EXT, types: PROJ_TYPES });
+      else if ((await projHandle.queryPermission({ mode: 'readwrite' })) !== 'granted' && (await projHandle.requestPermission({ mode: 'readwrite' })) !== 'granted') { toast('Keine Schreibberechtigung – bitte „Speichern unter…“ verwenden'); return; }
+      setProjName(projHandle.name);
+      const w = await projHandle.createWritable(); await w.write(projectJSON()); await w.close();
+      idb.set('projHandle', projHandle).catch(() => { });
+    } catch (e) { if (e.name !== 'AbortError') { console.error(e); toast('Projekt konnte nicht gespeichert werden'); } return; }
+  } else {   // ohne Dateisystem-Zugriff (z. B. Firefox): als Download
+    const name = as || !projName ? prompt('Name des Projekts', projName || safeName()) : projName;
+    if (!name) return;
+    setProjName(name);
+    download(new Blob([projectJSON()], { type: 'application/json' }), projName.replace(/[\\/:*?"<>|]/g, '_') + PROJ_EXT);
+  }
+  renderNow();
+  projSnap = stateStr(); updateProjUI();
+  toast(`Projekt „${projName}“ gespeichert`);
+}
+$('#btnProjOpen').onclick = openProject;
+$('#btnProjSave').onclick = () => saveProject(false);
+$('#btnProjSaveAs').onclick = () => saveProject(true);
+$('#projFile').onchange = e => { const f = e.target.files[0]; if (f) openProjectFile(f, null); e.target.value = ''; };
+window.addEventListener('beforeunload', e => { if (projName && stateStr() !== projSnap) { e.preventDefault(); e.returnValue = ''; } });
+// Nach dem Neustart: Projektname und Dateizugriff wiederherstellen (Strg+S schreibt wieder in dieselbe Datei)
+async function projInit(st) {
+  projName = st && typeof st.projName === 'string' ? st.projName : '';
+  projSnap = st && st.projClean ? stateStr() : '';
+  if (projName) { try { const h = await idb.get('projHandle'); if (h && h.name.replace(/\.(tabelle|json)$/i, '') === projName) projHandle = h; } catch { } }
+  updateProjUI();
 }
 
 /* ---------- Seitenleiste verbreitern ---------- */
@@ -1661,8 +1849,9 @@ function restore() {
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
 
-restore();
+const restored = restore();
 syncUI();
+projInit(restored);
 refreshUserPresets();
 dirInit();
 setMode('select');
@@ -1672,7 +1861,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
 // Offline-Cache; Service Worker laufen nur über http(s), nicht bei file://.
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => { });
 // Im Explorer per „Öffnen mit“ an die installierte App übergebene Dateien laden.
-if ('launchQueue' in window) launchQueue.setConsumer(async p => { if (p.files && p.files[0]) loadFile(await p.files[0].getFile()); });
+if ('launchQueue' in window) launchQueue.setConsumer(async p => { if (p.files && p.files[0]) loadFile(await p.files[0].getFile(), p.files[0]); });
 </script>
 </body>
 </html>
